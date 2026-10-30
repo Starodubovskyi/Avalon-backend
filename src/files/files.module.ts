@@ -6,6 +6,7 @@ import {
 import { DocumentFilePersistenceModule } from './infrastructure/persistence/document/document-persistence.module';
 import { RelationalFilePersistenceModule } from './infrastructure/persistence/relational/relational-persistence.module';
 import { FilesService } from './files.service';
+import { FilesMetaController } from './files-meta.controller';
 import fileConfig from './config/file.config';
 import { FileConfig, FileDriver } from './config/file-config.type';
 import { FilesLocalModule } from './infrastructure/uploader/local/files.module';
@@ -34,6 +35,7 @@ const infrastructureUploaderModule =
     infrastructurePersistenceModule,
     infrastructureUploaderModule,
   ],
+  controllers: [FilesMetaController],
   providers: [FilesService],
   exports: [FilesService, infrastructurePersistenceModule],
 })

@@ -20,6 +20,9 @@ import { HeaderResolver, I18nModule } from 'nestjs-i18n';
 import { TypeOrmConfigService } from './database/typeorm-config.service';
 import { MailModule } from './mail/mail.module';
 import { HomeModule } from './home/home.module';
+import { MapPointsModule } from './map-points/map-points.module';
+import { MapLayersModule } from './map-layers/map-layers.module';
+import { PortsModule } from './ports/ports.module';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { AllConfigType } from './config/config.type';
 import { SessionModule } from './session/session.module';
@@ -84,6 +87,9 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
     }),
     UsersModule,
     FilesModule,
+    MapPointsModule,
+    MapLayersModule,
+    PortsModule,
     AuthModule,
     AuthFacebookModule,
     AuthGoogleModule,
