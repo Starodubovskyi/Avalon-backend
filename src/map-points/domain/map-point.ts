@@ -1,4 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { UserRef } from '../../users/domain/user-ref';
+import { MAP_POINT_KINDS, MapPointKind } from '../map-point.constants';
 
 export class MapPoint {
   @ApiProperty({
@@ -12,6 +14,9 @@ export class MapPoint {
     example: 1,
   })
   userId: number | string;
+
+  @ApiProperty({ enum: MAP_POINT_KINDS, example: 'company' })
+  kind: MapPointKind;
 
   @ApiProperty({
     type: Number,
@@ -61,6 +66,9 @@ export class MapPoint {
   })
   address: string | null;
 
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 2000 })
+  notes: string | null;
+
   @ApiPropertyOptional({
     type: String,
     nullable: true,
@@ -72,6 +80,13 @@ export class MapPoint {
     type: Boolean,
   })
   isFavorite: boolean;
+
+  @ApiProperty({
+    type: () => UserRef,
+    nullable: true,
+    description: 'Creator of the point (userId)',
+  })
+  createdBy: UserRef | null;
 
   @ApiProperty()
   createdAt: Date;

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, Repository, SelectQueryBuilder } from 'typeorm';
+import { Brackets, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 import { escapeLikePattern } from '../../../../../utils/escape-like';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { NewStoredDocument, StoredDocument } from '../../../../domain/document';
@@ -100,7 +100,11 @@ export class DocumentRelationalRepository implements DocumentRepository {
   }
 
   async softDelete(id: StoredDocument['id']): Promise<boolean> {
-    const result = await this.documentRepository.softDelete({ id });
+    // softDelete() does not skip already-deleted rows; filter explicitly.
+    const result = await this.documentRepository.update(
+      { id, deletedAt: IsNull() },
+      { deletedAt: new Date() },
+    );
     return (result.affected ?? 0) > 0;
   }
 }

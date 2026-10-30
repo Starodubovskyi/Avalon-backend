@@ -1,8 +1,12 @@
 import 'reflect-metadata';
 import { DataSource, DataSourceOptions } from 'typeorm';
+import {
+  resolveDatabaseType,
+  resolveMaxConnections,
+} from './config/database.config';
 
 export const AppDataSource = new DataSource({
-  type: process.env.DATABASE_TYPE,
+  type: resolveDatabaseType(process.env),
   url: process.env.DATABASE_URL,
   host: process.env.DATABASE_HOST,
   port: process.env.DATABASE_PORT
@@ -25,9 +29,7 @@ export const AppDataSource = new DataSource({
   extra: {
     // based on https://node-postgres.com/api/pool
     // max connection pool size
-    max: process.env.DATABASE_MAX_CONNECTIONS
-      ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10)
-      : 100,
+    max: resolveMaxConnections(process.env),
     ssl:
       process.env.DATABASE_SSL_ENABLED === 'true'
         ? {

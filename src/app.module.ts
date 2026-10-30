@@ -71,7 +71,11 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
         fallbackLanguage: configService.getOrThrow('app.fallbackLanguage', {
           infer: true,
         }),
-        loaderOptions: { path: path.join(__dirname, '/i18n/'), watch: true },
+        loaderOptions: {
+          path: path.join(__dirname, '/i18n/'),
+          // file watching only for local development (not on serverless)
+          watch: process.env.NODE_ENV === 'development',
+        },
       }),
       resolvers: [
         {

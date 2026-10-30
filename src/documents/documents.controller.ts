@@ -26,6 +26,7 @@ import {
   ApiOkResponse,
   ApiParam,
   ApiProduces,
+  ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
@@ -41,6 +42,7 @@ import { DocumentView } from './domain/document';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { DocumentsService } from './documents.service';
+import { DocumentUploadsEnabledGuard } from './storage/document-uploads-enabled.guard';
 
 @ApiTags('Documents')
 @ApiBearerAuth()
@@ -78,6 +80,11 @@ export class DocumentsController {
     },
   })
   @ApiCreatedResponse({ type: DocumentView })
+  @ApiServiceUnavailableResponse({
+    description: '{ errors: { file: "documentsStorageNotConfigured" } }',
+  })
+  // 503 before multer reads the body when storage is not configured
+  @UseGuards(DocumentUploadsEnabledGuard)
   // order matters: the cleanup interceptor must wrap FileInterceptor (multer)
   @UseInterceptors(CleanupUploadOnErrorInterceptor, FileInterceptor('file'))
   @HttpCode(HttpStatus.CREATED)
@@ -106,7 +113,9 @@ export class DocumentsController {
     const file = await this.documentsService.openDownload(id);
     response.status(HttpStatus.OK);
     response.setHeader('Content-Type', file.mimeType);
-    response.setHeader('Content-Length', String(file.size));
+    if (file.size !== null) {
+      response.setHeader('Content-Length', String(file.size));
+    }
     response.setHeader('Content-Disposition', file.contentDisposition);
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Cache-Control', 'private, no-store');

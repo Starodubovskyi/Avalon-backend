@@ -1,18 +1,12 @@
 import { randomUUID } from 'crypto';
 import path from 'path';
 import {
-  DEFAULT_DOCUMENTS_DIR,
   DEFAULT_DOCUMENTS_MAX_FILE_SIZE,
   DOCUMENT_MIME_TYPES,
   DocumentExtension,
 } from './document.constants';
 
 const MAX_ORIGINAL_NAME_LENGTH = 255;
-
-/** Absolute storage directory (DOCUMENTS_DIR, default ./storage/documents). */
-export function resolveDocumentsDir(): string {
-  return path.resolve(process.env.DOCUMENTS_DIR || DEFAULT_DOCUMENTS_DIR);
-}
 
 /** Max upload size in bytes (DOCUMENTS_MAX_FILE_SIZE, default 20 MB). */
 export function resolveDocumentsMaxFileSize(): number {

@@ -6,11 +6,20 @@ import {
 } from '@nestjs/common';
 import { CreateMapPointDto } from './dto/create-map-point.dto';
 import { UpdateMapPointDto } from './dto/update-map-point.dto';
+import { QueryMapPointDto } from './dto/query-map-point.dto';
 import { MapPointRepository } from './infrastructure/persistence/map-point.repository';
 import { MapPoint } from './domain/map-point';
 import { User } from '../users/domain/user';
 import { FilesService } from '../files/files.service';
+import {
+  DEFAULT_MAP_POINT_KIND,
+  MAP_POINT_LIST_LIMIT,
+} from './map-point.constants';
 
+/**
+ * Shared team map (admin/staff): any staff member can read, edit and delete
+ * any point; userId always stays the creator.
+ */
 @Injectable()
 export class MapPointsService {
   constructor(
@@ -26,6 +35,7 @@ export class MapPointsService {
 
     return this.mapPointRepository.create({
       userId,
+      kind: createMapPointDto.kind ?? DEFAULT_MAP_POINT_KIND,
       lat: createMapPointDto.lat,
       lng: createMapPointDto.lng,
       firstName: createMapPointDto.firstName,
@@ -34,20 +44,21 @@ export class MapPointsService {
       phone: createMapPointDto.phone ?? null,
       email: createMapPointDto.email ?? null,
       address: createMapPointDto.address ?? null,
+      notes: createMapPointDto.notes ?? null,
       photoId,
       isFavorite: false,
     });
   }
 
-  findAllForUser(userId: User['id']): Promise<MapPoint[]> {
-    return this.mapPointRepository.findAllByUserId(userId);
+  findAll(query: QueryMapPointDto): Promise<MapPoint[]> {
+    return this.mapPointRepository.findAll({
+      kind: query.kind,
+      limit: MAP_POINT_LIST_LIMIT,
+    });
   }
 
-  async findByIdForUser(
-    id: MapPoint['id'],
-    userId: User['id'],
-  ): Promise<MapPoint> {
-    const point = await this.mapPointRepository.findByIdForUser(id, userId);
+  async findById(id: MapPoint['id']): Promise<MapPoint> {
+    const point = await this.mapPointRepository.findById(id);
     if (!point) {
       throw new NotFoundException('Map point not found');
     }
@@ -56,7 +67,6 @@ export class MapPointsService {
 
   async update(
     id: MapPoint['id'],
-    userId: User['id'],
     updateMapPointDto: UpdateMapPointDto,
   ): Promise<MapPoint> {
     const photoId =
@@ -64,7 +74,10 @@ export class MapPointsService {
         ? undefined
         : await this.resolvePhotoId(updateMapPointDto.photoId);
 
-    const updated = await this.mapPointRepository.updateForUser(id, userId, {
+    const updated = await this.mapPointRepository.update(id, {
+      ...(updateMapPointDto.kind !== undefined
+        ? { kind: updateMapPointDto.kind }
+        : {}),
       ...(updateMapPointDto.lat !== undefined
         ? { lat: updateMapPointDto.lat }
         : {}),
@@ -89,6 +102,9 @@ export class MapPointsService {
       ...(updateMapPointDto.address !== undefined
         ? { address: updateMapPointDto.address }
         : {}),
+      ...(updateMapPointDto.notes !== undefined
+        ? { notes: updateMapPointDto.notes }
+        : {}),
       ...(photoId !== undefined ? { photoId } : {}),
       ...(updateMapPointDto.isFavorite !== undefined
         ? { isFavorite: updateMapPointDto.isFavorite }
@@ -101,8 +117,8 @@ export class MapPointsService {
     return updated;
   }
 
-  async remove(id: MapPoint['id'], userId: User['id']): Promise<void> {
-    const removed = await this.mapPointRepository.removeForUser(id, userId);
+  async remove(id: MapPoint['id']): Promise<void> {
+    const removed = await this.mapPointRepository.remove(id);
     if (!removed) {
       throw new NotFoundException('Map point not found');
     }

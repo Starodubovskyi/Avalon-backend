@@ -4,9 +4,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { createReadStream, ReadStream } from 'fs';
-import { stat } from 'fs/promises';
-import path from 'path';
+import { Readable } from 'stream';
 import { VesselRepository } from '../vessels/infrastructure/persistence/vessel.repository';
 import { DOCUMENT_LIST_LIMIT } from './document.constants';
 import {
@@ -15,18 +13,19 @@ import {
   getAllowedExtension,
   isSafeStorageKey,
   mimeTypeForExtension,
-  resolveDocumentsDir,
   sanitizeOriginalName,
 } from './documents-storage';
 import { DocumentView, toDocumentView } from './domain/document';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { DocumentRepository } from './infrastructure/persistence/document.repository';
+import { DocumentStorage } from './storage/document-storage';
 
 export interface DocumentDownload {
-  stream: ReadStream;
+  stream: Readable;
   mimeType: string;
-  size: number;
+  /** null when the storage does not report a length */
+  size: number | null;
   contentDisposition: string;
 }
 
@@ -35,6 +34,7 @@ export class DocumentsService {
   constructor(
     private readonly documentRepository: DocumentRepository,
     private readonly vesselRepository: VesselRepository,
+    private readonly storage: DocumentStorage,
   ) {}
 
   async findAll(query: QueryDocumentDto): Promise<DocumentView[]> {
@@ -48,8 +48,10 @@ export class DocumentsService {
   }
 
   /**
-   * The file is already on disk (multer); on any error thrown here the
-   * CleanupUploadOnErrorInterceptor removes it.
+   * Local driver: multer already wrote the file and the
+   * CleanupUploadOnErrorInterceptor removes it on any error thrown here.
+   * S3 driver: the object is written only after validation and discarded
+   * if the DB insert fails.
    */
   async upload(
     file: Express.Multer.File | undefined,
@@ -62,7 +64,7 @@ export class DocumentsService {
         errors: { file: 'selectFile' },
       });
     }
-    const extension = getAllowedExtension(file.filename);
+    const extension = getAllowedExtension(file.originalname);
     if (!extension) {
       throw new UnprocessableEntityException({
         status: HttpStatus.UNPROCESSABLE_ENTITY,
@@ -76,18 +78,26 @@ export class DocumentsService {
       });
     }
 
-    const created = await this.documentRepository.create({
-      title: dto.title,
-      category: dto.category,
-      vesselId: dto.vesselId ?? null,
-      storageKey: file.filename,
-      originalName: sanitizeOriginalName(decodeUploadedName(file.originalname)),
-      mimeType: mimeTypeForExtension(extension),
-      size: file.size,
-      notes: dto.notes ?? null,
-      uploadedById: userId,
-    });
-    return toDocumentView(created);
+    const storageKey = await this.storage.save(file, extension);
+    try {
+      const created = await this.documentRepository.create({
+        title: dto.title,
+        category: dto.category,
+        vesselId: dto.vesselId ?? null,
+        storageKey,
+        originalName: sanitizeOriginalName(
+          decodeUploadedName(file.originalname),
+        ),
+        mimeType: mimeTypeForExtension(extension),
+        size: file.size,
+        notes: dto.notes ?? null,
+        uploadedById: userId,
+      });
+      return toDocumentView(created);
+    } catch (error) {
+      await this.storage.discard(storageKey);
+      throw error;
+    }
   }
 
   async openDownload(id: string): Promise<DocumentDownload> {
@@ -96,21 +106,20 @@ export class DocumentsService {
       throw new NotFoundException('Document not found');
     }
 
-    const filePath = path.join(resolveDocumentsDir(), document.storageKey);
-    const fileStat = await stat(filePath).catch(() => null);
-    if (!fileStat?.isFile()) {
+    const stored = await this.storage.open(document.storageKey);
+    if (!stored) {
       throw new NotFoundException('Document file not found');
     }
 
     return {
-      stream: createReadStream(filePath),
+      stream: stored.stream,
       mimeType: document.mimeType,
-      size: fileStat.size,
+      size: stored.size,
       contentDisposition: buildContentDisposition(document.originalName),
     };
   }
 
-  /** Soft delete: the file stays on disk so the record can be restored. */
+  /** Soft delete: the stored file stays so the record can be restored. */
   async remove(id: string): Promise<void> {
     const deleted = await this.documentRepository.softDelete(id);
     if (!deleted) {

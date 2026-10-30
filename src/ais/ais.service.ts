@@ -75,11 +75,18 @@ export class AisService implements OnModuleInit, OnModuleDestroy {
     private readonly dataSource: DataSource,
   ) {}
 
+  /** Serverless functions cannot hold a long-lived WebSocket. */
+  private readonly serverless = Boolean(process.env.VERCEL);
+
   get enabled(): boolean {
-    return this.apiKey.length > 0;
+    return this.apiKey.length > 0 && !this.serverless;
   }
 
   onModuleInit(): void {
+    if (this.serverless) {
+      this.logger.log('AIS disabled on serverless');
+      return;
+    }
     if (!this.enabled) {
       this.logger.log('AIS disabled: AISSTREAM_API_KEY is empty');
       return;

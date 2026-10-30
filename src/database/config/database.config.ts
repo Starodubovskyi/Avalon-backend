@@ -72,13 +72,32 @@ class EnvironmentVariablesValidator {
   DATABASE_CERT: string;
 }
 
+/** DATABASE_URL alone is enough: the type defaults to postgres (Neon etc.). */
+export function resolveDatabaseType(
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  return env.DATABASE_TYPE || (env.DATABASE_URL ? 'postgres' : undefined);
+}
+
+/**
+ * Pool size per process. Serverless (Vercel) runs many small instances, so
+ * the default is small there; DATABASE_MAX_CONNECTIONS always wins.
+ */
+export function resolveMaxConnections(env: NodeJS.ProcessEnv): number {
+  const configured = parseInt(env.DATABASE_MAX_CONNECTIONS ?? '', 10);
+  if (Number.isInteger(configured) && configured > 0) {
+    return configured;
+  }
+  return env.VERCEL ? 5 : 100;
+}
+
 export default registerAs<DatabaseConfig>('database', () => {
   validateConfig(process.env, EnvironmentVariablesValidator);
 
   return {
     isDocumentDatabase: ['mongodb'].includes(process.env.DATABASE_TYPE ?? ''),
     url: process.env.DATABASE_URL,
-    type: process.env.DATABASE_TYPE,
+    type: resolveDatabaseType(process.env),
     host: process.env.DATABASE_HOST,
     port: process.env.DATABASE_PORT
       ? parseInt(process.env.DATABASE_PORT, 10)
@@ -87,9 +106,7 @@ export default registerAs<DatabaseConfig>('database', () => {
     name: process.env.DATABASE_NAME,
     username: process.env.DATABASE_USERNAME,
     synchronize: process.env.DATABASE_SYNCHRONIZE === 'true',
-    maxConnections: process.env.DATABASE_MAX_CONNECTIONS
-      ? parseInt(process.env.DATABASE_MAX_CONNECTIONS, 10)
-      : 100,
+    maxConnections: resolveMaxConnections(process.env),
     sslEnabled: process.env.DATABASE_SSL_ENABLED === 'true',
     rejectUnauthorized: process.env.DATABASE_REJECT_UNAUTHORIZED === 'true',
     ca: process.env.DATABASE_CA,

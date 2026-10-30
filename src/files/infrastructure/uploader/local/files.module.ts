@@ -7,6 +7,7 @@ import { FilesLocalController } from './files.controller';
 import { MulterModule } from '@nestjs/platform-express';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { diskStorage } from 'multer';
+import { mkdir } from 'fs/promises';
 import { randomStringGenerator } from '@nestjs/common/utils/random-string-generator.util';
 
 import { FilesLocalService } from './files.service';
@@ -48,7 +49,14 @@ const infrastructurePersistenceModule = (databaseConfig() as DatabaseConfig)
             callback(null, true);
           },
           storage: diskStorage({
-            destination: './files',
+            // Lazy mkdir: a string destination is mkdir'ed synchronously at
+            // boot, which crashes on a read-only FS (Vercel).
+            destination: (request, file, callback) => {
+              void mkdir('./files', { recursive: true }).then(
+                () => callback(null, './files'),
+                (error: Error) => callback(error, './files'),
+              );
+            },
             filename: (request, file, callback) => {
               callback(
                 null,

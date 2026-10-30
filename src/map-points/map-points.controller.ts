@@ -9,12 +9,14 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Request,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
+  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiOkResponse,
   ApiParam,
@@ -24,12 +26,19 @@ import { AuthGuard } from '@nestjs/passport';
 import { MapPointsService } from './map-points.service';
 import { CreateMapPointDto } from './dto/create-map-point.dto';
 import { UpdateMapPointDto } from './dto/update-map-point.dto';
+import { QueryMapPointDto } from './dto/query-map-point.dto';
 import { MapPoint } from './domain/map-point';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
+import { Roles } from '../roles/roles.decorator';
+import { RoleEnum } from '../roles/roles.enum';
+import { RolesGuard } from '../roles/roles.guard';
 
+/** Shared contacts map of the Avalon team: admin and staff only. */
 @ApiTags('Map points')
 @ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@ApiForbiddenResponse({ description: 'Viewers (role user) have no access' })
+@Roles(RoleEnum.admin, RoleEnum.staff)
+@UseGuards(AuthGuard('jwt'), RolesGuard)
 @Controller({
   path: 'map-points',
   version: '1',
@@ -52,10 +61,11 @@ export class MapPointsController {
   @Get()
   @ApiOkResponse({
     type: [MapPoint],
+    description: 'All team points, newest first (max 1000)',
   })
   @HttpCode(HttpStatus.OK)
-  findAll(@Request() request: { user: JwtPayloadType }): Promise<MapPoint[]> {
-    return this.mapPointsService.findAllForUser(request.user.id);
+  findAll(@Query() query: QueryMapPointDto): Promise<MapPoint[]> {
+    return this.mapPointsService.findAll(query);
   }
 
   @Get(':id')
@@ -68,11 +78,8 @@ export class MapPointsController {
     type: MapPoint,
   })
   @HttpCode(HttpStatus.OK)
-  findById(
-    @Request() request: { user: JwtPayloadType },
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ): Promise<MapPoint> {
-    return this.mapPointsService.findByIdForUser(id, request.user.id);
+  findById(@Param('id', new ParseUUIDPipe()) id: string): Promise<MapPoint> {
+    return this.mapPointsService.findById(id);
   }
 
   @Patch(':id')
@@ -86,11 +93,10 @@ export class MapPointsController {
   })
   @HttpCode(HttpStatus.OK)
   update(
-    @Request() request: { user: JwtPayloadType },
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() updateMapPointDto: UpdateMapPointDto,
   ): Promise<MapPoint> {
-    return this.mapPointsService.update(id, request.user.id, updateMapPointDto);
+    return this.mapPointsService.update(id, updateMapPointDto);
   }
 
   @Delete(':id')
@@ -101,10 +107,7 @@ export class MapPointsController {
   })
   @ApiNoContentResponse()
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(
-    @Request() request: { user: JwtPayloadType },
-    @Param('id', new ParseUUIDPipe()) id: string,
-  ): Promise<void> {
-    return this.mapPointsService.remove(id, request.user.id);
+  remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
+    return this.mapPointsService.remove(id);
   }
 }

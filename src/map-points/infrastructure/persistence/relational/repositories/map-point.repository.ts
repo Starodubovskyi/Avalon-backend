@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 import { MapPointEntity } from '../entities/map-point.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { MapPoint } from '../../../../domain/map-point';
-import { MapPointRepository } from '../../map-point.repository';
+import {
+  MapPointListFilter,
+  MapPointRepository,
+  NewMapPoint,
+} from '../../map-point.repository';
 import { MapPointMapper } from '../mappers/map-point.mapper';
 import { DeepPartial } from '../../../../../utils/types/deep-partial.type';
-import { User } from '../../../../../users/domain/user';
 
 @Injectable()
 export class MapPointRelationalRepository implements MapPointRepository {
@@ -16,42 +19,56 @@ export class MapPointRelationalRepository implements MapPointRepository {
     private readonly mapPointRepository: Repository<MapPointEntity>,
   ) {}
 
-  async create(
-    data: Omit<MapPoint, 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'>,
-  ): Promise<MapPoint> {
+  /**
+   * Joins the creator for `createdBy`. withDeleted() keeps the creator visible
+   * after a user soft delete; deleted points are excluded explicitly.
+   */
+  private baseQuery(): SelectQueryBuilder<MapPointEntity> {
+    return this.mapPointRepository
+      .createQueryBuilder('point')
+      .withDeleted()
+      .leftJoin('point.user', 'user')
+      .addSelect(['user.id', 'user.firstName', 'user.lastName', 'user.email'])
+      .where('point.deletedAt IS NULL');
+  }
+
+  async create(data: NewMapPoint): Promise<MapPoint> {
     const persistenceModel = MapPointMapper.toPersistence(data);
     const newEntity = await this.mapPointRepository.save(
       this.mapPointRepository.create(persistenceModel),
     );
-    return MapPointMapper.toDomain(newEntity);
+    return (
+      (await this.findById(newEntity.id)) ?? MapPointMapper.toDomain(newEntity)
+    );
   }
 
-  async findAllByUserId(userId: User['id']): Promise<MapPoint[]> {
-    const entities = await this.mapPointRepository.find({
-      where: { userId: Number(userId) },
-      order: { createdAt: 'DESC' },
-      take: 500,
-    });
+  async findAll(filter: MapPointListFilter): Promise<MapPoint[]> {
+    const query = this.baseQuery();
+    if (filter.kind) {
+      query.andWhere('point.kind = :kind', { kind: filter.kind });
+    }
+    const entities = await query
+      .orderBy('point.createdAt', 'DESC')
+      .addOrderBy('point.id', 'DESC')
+      // many-to-one join only: LIMIT is safe (no row multiplication)
+      .limit(filter.limit)
+      .getMany();
     return entities.map((entity) => MapPointMapper.toDomain(entity));
   }
 
-  async findByIdForUser(
-    id: MapPoint['id'],
-    userId: User['id'],
-  ): Promise<NullableType<MapPoint>> {
-    const entity = await this.mapPointRepository.findOne({
-      where: { id, userId: Number(userId) },
-    });
+  async findById(id: MapPoint['id']): Promise<NullableType<MapPoint>> {
+    const entity = await this.baseQuery()
+      .andWhere('point.id = :id', { id })
+      .getOne();
     return entity ? MapPointMapper.toDomain(entity) : null;
   }
 
-  async updateForUser(
+  async update(
     id: MapPoint['id'],
-    userId: User['id'],
     payload: DeepPartial<MapPoint>,
   ): Promise<MapPoint | null> {
     const entity = await this.mapPointRepository.findOne({
-      where: { id, userId: Number(userId) },
+      where: { id },
     });
 
     if (!entity) {
@@ -62,7 +79,9 @@ export class MapPointRelationalRepository implements MapPointRepository {
     const merged: MapPoint = {
       ...current,
       id,
+      // the creator never changes, whoever edits the point
       userId: entity.userId,
+      kind: typeof payload.kind === 'string' ? payload.kind : current.kind,
       lat: typeof payload.lat === 'number' ? payload.lat : current.lat,
       lng: typeof payload.lng === 'number' ? payload.lng : current.lng,
       firstName:
@@ -95,6 +114,12 @@ export class MapPointRelationalRepository implements MapPointRepository {
           : payload.address === null
             ? null
             : String(payload.address),
+      notes:
+        payload.notes === undefined
+          ? current.notes
+          : payload.notes === null
+            ? null
+            : String(payload.notes),
       photoId:
         payload.photoId === undefined
           ? current.photoId
@@ -107,24 +132,19 @@ export class MapPointRelationalRepository implements MapPointRepository {
           : current.isFavorite,
     };
 
-    const updatedEntity = await this.mapPointRepository.save(
+    await this.mapPointRepository.save(
       this.mapPointRepository.create(MapPointMapper.toPersistence(merged)),
     );
 
-    return MapPointMapper.toDomain(updatedEntity);
+    return this.findById(id);
   }
 
-  async removeForUser(
-    id: MapPoint['id'],
-    userId: User['id'],
-  ): Promise<boolean> {
-    const entity = await this.mapPointRepository.findOne({
-      where: { id, userId: Number(userId) },
-    });
-    if (!entity) {
-      return false;
-    }
-    await this.mapPointRepository.softDelete({ id, userId: Number(userId) });
-    return true;
+  async remove(id: MapPoint['id']): Promise<boolean> {
+    // softDelete() does not skip already-deleted rows; filter explicitly.
+    const result = await this.mapPointRepository.update(
+      { id, deletedAt: IsNull() },
+      { deletedAt: new Date() },
+    );
+    return (result.affected ?? 0) > 0;
   }
 }

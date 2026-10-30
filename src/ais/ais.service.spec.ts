@@ -105,6 +105,26 @@ describe('AisService', () => {
     );
   }
 
+  it('should never start on serverless (VERCEL), even with a key', () => {
+    const originalVercel = process.env.VERCEL;
+    process.env.VERCEL = '1';
+    try {
+      const service = createService('test-key');
+      service.onModuleInit();
+      expect(service.getStatus()).toMatchObject({
+        enabled: false,
+        connected: false,
+      });
+      expect(repo.findActiveForAis).not.toHaveBeenCalled();
+    } finally {
+      if (originalVercel === undefined) {
+        delete process.env.VERCEL;
+      } else {
+        process.env.VERCEL = originalVercel;
+      }
+    }
+  });
+
   it('should stay disabled without an API key and not touch the DB', () => {
     const service = createService('');
     service.onModuleInit();
