@@ -39,3 +39,10 @@ lerna-debug.log*
 .env
 /ormconfig.json
 .codegpt
+
+# Uploaded staff documents (DOCUMENTS_DIR)
+/storage
+
+# Vercel CLI link and pulled env
+.vercel
+.env*.local

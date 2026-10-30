@@ -1,6 +1,7 @@
 import {
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
   UnprocessableEntityException,
@@ -31,6 +32,8 @@ import { User } from '../users/domain/user';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private jwtService: JwtService,
     private usersService: UsersService,
@@ -219,12 +222,22 @@ export class AuthService {
       },
     );
 
-    await this.mailService.userSignUp({
-      to: dto.email,
-      data: {
-        hash,
-      },
-    });
+    // Fire-and-forget: the account already exists, so a slow or unreachable SMTP server
+    // must neither fail the registration nor keep the client waiting for the mail timeout.
+    void this.mailService
+      .userSignUp({
+        to: dto.email,
+        data: {
+          hash,
+        },
+      })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          `Sign-up confirmation email was not sent for user ${String(user.id)}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      });
   }
 
   async confirmEmail(hash: string): Promise<void> {

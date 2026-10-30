@@ -5,6 +5,10 @@ API_PREFIX=api
 APP_FALLBACK_LANGUAGE=en
 APP_HEADER_LANGUAGE=x-custom-lang
 FRONTEND_DOMAIN=http://localhost:3000
+# Extra allowed browser origins, comma-separated (FRONTEND_DOMAIN is always allowed;
+# localhost:3000/3001 are allowed when NODE_ENV=development). `*` = one label fragment,
+# e.g. https://avalon-frontend-*.vercel.app
+CORS_ORIGINS=
 BACKEND_DOMAIN=http://localhost:3000
 
 DATABASE_TYPE=postgres
@@ -15,6 +19,9 @@ DATABASE_PASSWORD=secret
 DATABASE_NAME=api
 DATABASE_SYNCHRONIZE=false
 DATABASE_MAX_CONNECTIONS=100
+# Neon / managed Postgres: DATABASE_URL alone is enough (type defaults to postgres);
+# then set DATABASE_SSL_ENABLED=true and DATABASE_REJECT_UNAUTHORIZED=true.
+# DATABASE_MAX_CONNECTIONS defaults to 100 (5 on Vercel).
 DATABASE_SSL_ENABLED=false
 DATABASE_REJECT_UNAUTHORIZED=false
 DATABASE_CA=
@@ -58,3 +65,19 @@ GOOGLE_CLIENT_SECRET=
 APPLE_APP_AUDIENCE=[]
 
 WORKER_HOST=redis://redis:6379/1
+
+# AISStream.io WebSocket key (https://aisstream.io). Empty = AIS disabled.
+AISSTREAM_API_KEY=
+
+# Private storage for staff documents (never served via the public /files route)
+# local = disk (DOCUMENTS_DIR), s3 = S3-compatible bucket (AWS S3, Cloudflare R2).
+# On Vercel local uploads are disabled (read-only FS) -> use s3.
+DOCUMENTS_DRIVER=local
+DOCUMENTS_DIR=./storage/documents
+DOCUMENTS_MAX_FILE_SIZE=20971520
+DOCUMENTS_S3_BUCKET=
+# R2: https://<account-id>.r2.cloudflarestorage.com (leave empty for AWS S3)
+DOCUMENTS_S3_ENDPOINT=
+DOCUMENTS_S3_REGION=auto
+DOCUMENTS_S3_ACCESS_KEY_ID=
+DOCUMENTS_S3_SECRET_ACCESS_KEY=

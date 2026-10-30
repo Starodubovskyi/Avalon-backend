@@ -20,6 +20,13 @@ import { HeaderResolver, I18nModule } from 'nestjs-i18n';
 import { TypeOrmConfigService } from './database/typeorm-config.service';
 import { MailModule } from './mail/mail.module';
 import { HomeModule } from './home/home.module';
+import { MapPointsModule } from './map-points/map-points.module';
+import { MapLayersModule } from './map-layers/map-layers.module';
+import { PortsModule } from './ports/ports.module';
+import { VesselsModule } from './vessels/vessels.module';
+import { VesselEventsModule } from './vessel-events/vessel-events.module';
+import { DocumentsModule } from './documents/documents.module';
+import { AisModule } from './ais/ais.module';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { AllConfigType } from './config/config.type';
 import { SessionModule } from './session/session.module';
@@ -64,7 +71,11 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
         fallbackLanguage: configService.getOrThrow('app.fallbackLanguage', {
           infer: true,
         }),
-        loaderOptions: { path: path.join(__dirname, '/i18n/'), watch: true },
+        loaderOptions: {
+          path: path.join(__dirname, '/i18n/'),
+          // file watching only for local development (not on serverless)
+          watch: process.env.NODE_ENV === 'development',
+        },
       }),
       resolvers: [
         {
@@ -84,6 +95,13 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
     }),
     UsersModule,
     FilesModule,
+    MapPointsModule,
+    MapLayersModule,
+    PortsModule,
+    VesselsModule,
+    VesselEventsModule,
+    DocumentsModule,
+    AisModule,
     AuthModule,
     AuthFacebookModule,
     AuthGoogleModule,
