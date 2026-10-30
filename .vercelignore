@@ -1,0 +1,14 @@
+# Never upload local secrets, builds or user files from a CLI deploy.
+# Root-anchored: unanchored "files"/"storage" would also drop src/files and src/documents/storage.
+/.env
+/.env.*
+/node_modules
+/dist
+/coverage
+/files
+/storage
+/.husky
+/.vscode
+/.idea
+/.vercel
+*.log

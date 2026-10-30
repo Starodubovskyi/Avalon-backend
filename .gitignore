@@ -42,3 +42,7 @@ lerna-debug.log*
 
 # Uploaded staff documents (DOCUMENTS_DIR)
 /storage
+
+# Vercel CLI link and pulled env
+.vercel
+.env*.local

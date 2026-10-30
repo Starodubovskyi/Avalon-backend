@@ -151,7 +151,7 @@
     "testEnvironment": "node"
   },
   "engines": {
-    "node": ">=16.0.0",
+    "node": "22.x",
     "npm": ">=8.0.0"
   },
   "release-it": {
