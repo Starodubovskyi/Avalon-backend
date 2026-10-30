@@ -23,6 +23,10 @@ import { HomeModule } from './home/home.module';
 import { MapPointsModule } from './map-points/map-points.module';
 import { MapLayersModule } from './map-layers/map-layers.module';
 import { PortsModule } from './ports/ports.module';
+import { VesselsModule } from './vessels/vessels.module';
+import { VesselEventsModule } from './vessel-events/vessel-events.module';
+import { DocumentsModule } from './documents/documents.module';
+import { AisModule } from './ais/ais.module';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { AllConfigType } from './config/config.type';
 import { SessionModule } from './session/session.module';
@@ -90,6 +94,10 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
     MapPointsModule,
     MapLayersModule,
     PortsModule,
+    VesselsModule,
+    VesselEventsModule,
+    DocumentsModule,
+    AisModule,
     AuthModule,
     AuthFacebookModule,
     AuthGoogleModule,

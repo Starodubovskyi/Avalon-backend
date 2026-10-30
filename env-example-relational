@@ -58,3 +58,10 @@ GOOGLE_CLIENT_SECRET=
 APPLE_APP_AUDIENCE=[]
 
 WORKER_HOST=redis://redis:6379/1
+
+# AISStream.io WebSocket key (https://aisstream.io). Empty = AIS disabled.
+AISSTREAM_API_KEY=
+
+# Private storage for staff documents (never served via the public /files route)
+DOCUMENTS_DIR=./storage/documents
+DOCUMENTS_MAX_FILE_SIZE=20971520
