@@ -27,6 +27,9 @@ import { VesselsModule } from './vessels/vessels.module';
 import { VesselEventsModule } from './vessel-events/vessel-events.module';
 import { DocumentsModule } from './documents/documents.module';
 import { AisModule } from './ais/ais.module';
+import { UsersDirectoryModule } from './users-directory/users-directory.module';
+import { ChatModule } from './chat/chat.module';
+import { SocialModule } from './social/social.module';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { AllConfigType } from './config/config.type';
 import { SessionModule } from './session/session.module';
@@ -93,6 +96,9 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
       imports: [ConfigModule],
       inject: [ConfigService],
     }),
+    // Before UsersModule: GET /users/directory must be routed ahead of the
+    // admin-only GET /users/:id.
+    UsersDirectoryModule,
     UsersModule,
     FilesModule,
     MapPointsModule,
@@ -102,6 +108,8 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
     VesselEventsModule,
     DocumentsModule,
     AisModule,
+    ChatModule,
+    SocialModule,
     AuthModule,
     AuthFacebookModule,
     AuthGoogleModule,
