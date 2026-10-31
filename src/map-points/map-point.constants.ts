@@ -1,4 +1,11 @@
-export const MAP_POINT_KINDS = ['company', 'person', 'employee'] as const;
+export const MAP_POINT_KINDS = [
+  'company',
+  'agency',
+  'terminal',
+  'authority',
+  'person',
+  'employee',
+] as const;
 export type MapPointKind = (typeof MAP_POINT_KINDS)[number];
 
 export const DEFAULT_MAP_POINT_KIND: MapPointKind = 'person';

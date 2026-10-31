@@ -21,7 +21,10 @@ import { MapPointKind } from '../../../../map-point.constants';
   name: 'map_point',
 })
 @Index('IDX_map_point_userId_createdAt', ['userId', 'createdAt'])
-@Check('CHK_map_point_kind', `"kind" IN ('company', 'person', 'employee')`)
+@Check(
+  'CHK_map_point_kind',
+  `"kind" IN ('company', 'agency', 'terminal', 'authority', 'person', 'employee')`,
+)
 export class MapPointEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', {
     primaryKeyConstraintName: 'PK_map_point_id',
