@@ -12,9 +12,10 @@ import {
   Max,
   MaxLength,
   Min,
-  ValidateIf,
 } from 'class-validator';
+import { trimToNull } from '../../utils/validators/is-body-text';
 import { IsIsoDateTime } from '../../utils/validators/is-iso-date-time';
+import { IsPresent } from '../../utils/validators/is-present';
 import {
   DESTINATIONS,
   Destination,
@@ -28,20 +29,9 @@ import {
   VesselType,
 } from '../vessel.constants';
 
-/** Trims strings; an empty string means "clear the value" (null). */
-function trimToNull({ value }: { value: unknown }): unknown {
-  if (typeof value !== 'string') return value;
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? null : trimmed;
-}
-
 function trim({ value }: { value: unknown }): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
-
-/** Validate when the key is present; null is rejected (non-nullable column). */
-const IsPresent = () =>
-  ValidateIf((_object: unknown, value: unknown) => value !== undefined);
 
 /*
  * Convention: `@IsOptional()` = nullable optional field (null clears it);
