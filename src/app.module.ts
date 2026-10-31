@@ -30,6 +30,7 @@ import { AisModule } from './ais/ais.module';
 import { UsersDirectoryModule } from './users-directory/users-directory.module';
 import { ChatModule } from './chat/chat.module';
 import { SocialModule } from './social/social.module';
+import { AgencyRequestsModule } from './agency-requests/agency-requests.module';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { AllConfigType } from './config/config.type';
 import { SessionModule } from './session/session.module';
@@ -110,6 +111,7 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
     AisModule,
     ChatModule,
     SocialModule,
+    AgencyRequestsModule,
     AuthModule,
     AuthFacebookModule,
     AuthGoogleModule,

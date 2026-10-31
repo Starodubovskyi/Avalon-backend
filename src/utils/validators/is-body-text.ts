@@ -5,6 +5,16 @@ export function trimString({ value }: { value: unknown }): unknown {
   return typeof value === 'string' ? value.trim() : value;
 }
 
+/**
+ * class-transformer helper for nullable text: trims strings; a blank string
+ * means "clear the value" (null). Other values are left untouched.
+ */
+export function trimToNull({ value }: { value: unknown }): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+}
+
 export function isBodyText(value: unknown, maxLength: number): boolean {
   return (
     typeof value === 'string' && value.length > 0 && value.length <= maxLength
