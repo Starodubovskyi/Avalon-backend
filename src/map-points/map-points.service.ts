@@ -161,11 +161,16 @@ export class MapPointsService {
       updateMapPointDto.photoId === undefined
         ? undefined
         : await this.resolvePhotoId(updateMapPointDto.photoId);
+    // Forms resend the current parent: keep it as is, without re-checking it
+    // (the caller may edit the branch but not the parent company).
+    const requestedParentId =
+      updateMapPointDto.parentId === point.parentId
+        ? undefined
+        : updateMapPointDto.parentId;
     const parentId =
-      updateMapPointDto.parentId === undefined ||
-      updateMapPointDto.parentId === null
-        ? updateMapPointDto.parentId
-        : await this.resolveParentId(actor, updateMapPointDto.parentId, id);
+      requestedParentId === undefined || requestedParentId === null
+        ? requestedParentId
+        : await this.resolveParentId(actor, requestedParentId, id);
 
     const patch = toMapPointPatch(updateMapPointDto, photoId, parentId);
     // A private person is team-only unless the request says otherwise.
@@ -248,8 +253,9 @@ export class MapPointsService {
 
   /**
    * The parent must be a point the actor may edit (owner or team): nobody
-   * attaches branches to someone else's company. It may not be the point
-   * itself; deeper cycles are checked by the repository under a lock.
+   * attaches branches to someone else's company (else notFound). Only a head
+   * office can be a parent, and never the point itself (else invalid);
+   * deeper cycles are checked by the repository under a lock.
    */
   private async resolveParentId(
     actor: NetworkActor,
@@ -262,6 +268,9 @@ export class MapPointsService {
     const parent = await this.mapPointRepository.findById(parentId);
     if (!parent || !canEditPoint(actor, parent)) {
       throw unprocessable('parentId', 'notFound');
+    }
+    if (parent.kind !== 'head_office') {
+      throw unprocessable('parentId', 'invalid');
     }
     return parent.id;
   }
