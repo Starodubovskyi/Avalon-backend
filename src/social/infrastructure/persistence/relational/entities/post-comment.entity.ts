@@ -12,11 +12,13 @@ import { UserEntity } from '../../../../../users/infrastructure/persistence/rela
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { PostEntity } from './post.entity';
 
-// Mirrors migration 1793700000000-CreateNetwork.
+// Mirrors migrations 1793700000000-CreateNetwork and 1794000000000-GeoPointsV2
+// (IDX_post_comment_authorId, used by the user Rank).
 @Entity({
   name: 'post_comment',
 })
 @Index('IDX_post_comment_post_createdAt', ['postId', 'createdAt'])
+@Index('IDX_post_comment_authorId', ['authorId'])
 export class PostCommentEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', {
     primaryKeyConstraintName: 'PK_post_comment_id',

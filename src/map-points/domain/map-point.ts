@@ -1,6 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserRef } from '../../users/domain/user-ref';
-import { MAP_POINT_KINDS, MapPointKind } from '../map-point.constants';
+import {
+  ACTIVITY_CODES,
+  ActivityCode,
+  MAP_POINT_KINDS,
+  MapPointKind,
+} from '../map-point.constants';
 
 export class MapPoint {
   @ApiProperty({
@@ -15,7 +20,7 @@ export class MapPoint {
   })
   userId: number | string;
 
-  @ApiProperty({ enum: MAP_POINT_KINDS, example: 'company' })
+  @ApiProperty({ enum: MAP_POINT_KINDS, example: 'head_office' })
   kind: MapPointKind;
 
   @ApiProperty({
@@ -32,21 +37,40 @@ export class MapPoint {
 
   @ApiProperty({
     type: String,
-    example: 'Ion',
+    example: 'Avalon Shipping SRL',
+    description: 'Title of the point',
   })
   firstName: string;
 
   @ApiProperty({
     type: String,
-    example: 'Popescu',
+    example: '',
+    deprecated: true,
   })
   lastName: string;
 
   @ApiProperty({
     type: String,
-    example: 'Port agent',
+    example: 'Ship agency',
+    deprecated: true,
+    description: 'Legacy free-text activity; see `activities`',
   })
   activity: string;
+
+  @ApiProperty({
+    enum: ACTIVITY_CODES,
+    isArray: true,
+    example: ['ship_agency'],
+    description: 'Business Activity codes',
+  })
+  activities: ActivityCode[];
+
+  /** The logo itself is served by GET /map-points/:id/logo, never inline. */
+  @ApiProperty({
+    type: Boolean,
+    description: 'The point has a logo (GET /map-points/:id/logo)',
+  })
+  hasLogo: boolean;
 
   @ApiPropertyOptional({
     type: String,
@@ -66,7 +90,12 @@ export class MapPoint {
   })
   address: string | null;
 
-  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 2000 })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: 2000,
+    deprecated: true,
+  })
   notes: string | null;
 
   @ApiPropertyOptional({
@@ -75,11 +104,6 @@ export class MapPoint {
     example: 'cbcfa8b8-3a25-4adb-a9c6-e325f0d0f3ae',
   })
   photoId: string | null;
-
-  @ApiProperty({
-    type: Boolean,
-  })
-  isFavorite: boolean;
 
   @ApiProperty({
     type: () => UserRef,

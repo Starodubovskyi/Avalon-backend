@@ -1,27 +1,35 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { IsNull, Repository, SelectQueryBuilder } from 'typeorm';
+import { In, IsNull, Repository, SelectQueryBuilder } from 'typeorm';
 import { MapPointEntity } from '../entities/map-point.entity';
+import { MapPointFavoriteEntity } from '../entities/map-point-favorite.entity';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { MapPoint } from '../../../../domain/map-point';
+import { ActivityCode } from '../../../../map-point.constants';
 import {
   MapPointListFilter,
+  MapPointPatch,
   MapPointRepository,
   NewMapPoint,
 } from '../../map-point.repository';
-import { MapPointMapper } from '../mappers/map-point.mapper';
-import { DeepPartial } from '../../../../../utils/types/deep-partial.type';
+import {
+  MapPointMapper,
+  MapPointPersistenceInput,
+} from '../mappers/map-point.mapper';
 
 @Injectable()
 export class MapPointRelationalRepository implements MapPointRepository {
   constructor(
     @InjectRepository(MapPointEntity)
     private readonly mapPointRepository: Repository<MapPointEntity>,
+    @InjectRepository(MapPointFavoriteEntity)
+    private readonly favoriteRepository: Repository<MapPointFavoriteEntity>,
   ) {}
 
   /**
    * Joins the creator for `createdBy`. withDeleted() keeps the creator visible
    * after a user soft delete; deleted points are excluded explicitly.
+   * `logo` is a select: false column: only the virtual `hasLogo` is read.
    */
   private baseQuery(): SelectQueryBuilder<MapPointEntity> {
     return this.mapPointRepository
@@ -63,9 +71,24 @@ export class MapPointRelationalRepository implements MapPointRepository {
     return entity ? MapPointMapper.toDomain(entity) : null;
   }
 
+  exists(id: MapPoint['id']): Promise<boolean> {
+    // find* skips soft-deleted rows (@DeleteDateColumn).
+    return this.mapPointRepository.exists({ where: { id } });
+  }
+
+  async findLogo(id: MapPoint['id']): Promise<string | null> {
+    const row = await this.mapPointRepository
+      .createQueryBuilder('point')
+      .select('point.logo', 'logo')
+      .where('point.id = :id', { id })
+      .andWhere('point.deletedAt IS NULL')
+      .getRawOne<{ logo: string | null }>();
+    return row?.logo ?? null;
+  }
+
   async update(
     id: MapPoint['id'],
-    payload: DeepPartial<MapPoint>,
+    payload: MapPointPatch,
   ): Promise<MapPoint | null> {
     const entity = await this.mapPointRepository.findOne({
       where: { id },
@@ -76,7 +99,7 @@ export class MapPointRelationalRepository implements MapPointRepository {
     }
 
     const current = MapPointMapper.toDomain(entity);
-    const merged: MapPoint = {
+    const merged: MapPointPersistenceInput = {
       ...current,
       id,
       // the creator never changes, whoever edits the point
@@ -88,6 +111,7 @@ export class MapPointRelationalRepository implements MapPointRepository {
         typeof payload.firstName === 'string'
           ? payload.firstName
           : current.firstName,
+      // "" is a value: it clears the legacy lastName / activity
       lastName:
         typeof payload.lastName === 'string'
           ? payload.lastName
@@ -96,6 +120,18 @@ export class MapPointRelationalRepository implements MapPointRepository {
         typeof payload.activity === 'string'
           ? payload.activity
           : current.activity,
+      activities: Array.isArray(payload.activities)
+        ? payload.activities.filter(
+            (code): code is ActivityCode => typeof code === 'string',
+          )
+        : current.activities,
+      // undefined keeps the stored logo (it is not loaded here)
+      logo:
+        payload.logo === undefined
+          ? undefined
+          : payload.logo === null
+            ? null
+            : String(payload.logo),
       phone:
         payload.phone === undefined
           ? current.phone
@@ -126,10 +162,6 @@ export class MapPointRelationalRepository implements MapPointRepository {
           : payload.photoId === null
             ? null
             : String(payload.photoId),
-      isFavorite:
-        typeof payload.isFavorite === 'boolean'
-          ? payload.isFavorite
-          : current.isFavorite,
     };
 
     await this.mapPointRepository.save(
@@ -146,5 +178,33 @@ export class MapPointRelationalRepository implements MapPointRepository {
       { deletedAt: new Date() },
     );
     return (result.affected ?? 0) > 0;
+  }
+
+  async findFavoriteIds(
+    userId: number,
+    pointIds: MapPoint['id'][],
+  ): Promise<Set<MapPoint['id']>> {
+    if (pointIds.length === 0) {
+      return new Set();
+    }
+    const rows = await this.favoriteRepository.find({
+      select: { pointId: true },
+      where: { userId, pointId: In(pointIds) },
+    });
+    return new Set(rows.map((row) => row.pointId));
+  }
+
+  async addFavorite(userId: number, pointId: MapPoint['id']): Promise<void> {
+    await this.favoriteRepository
+      .createQueryBuilder()
+      .insert()
+      .into(MapPointFavoriteEntity)
+      .values({ userId, pointId })
+      .orIgnore()
+      .execute();
+  }
+
+  async removeFavorite(userId: number, pointId: MapPoint['id']): Promise<void> {
+    await this.favoriteRepository.delete({ userId, pointId });
   }
 }

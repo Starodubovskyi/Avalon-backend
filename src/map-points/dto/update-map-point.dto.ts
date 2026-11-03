@@ -1,10 +1,12 @@
-import { ApiPropertyOptional, PartialType } from '@nestjs/swagger';
-import { IsBoolean, IsOptional } from 'class-validator';
+import { PartialType } from '@nestjs/swagger';
 import { CreateMapPointDto } from './create-map-point.dto';
 
-export class UpdateMapPointDto extends PartialType(CreateMapPointDto) {
-  @ApiPropertyOptional({ type: Boolean })
-  @IsOptional()
-  @IsBoolean()
-  isFavorite?: boolean;
-}
+/**
+ * skipNullProperties: false keeps the Create DTO null semantics: nullable
+ * fields (@IsOptional) accept null, non-nullable ones (title, coordinates,
+ * activities) reject it. Favorites are per user: see POST/DELETE
+ * /map-points/:id/favorite (the legacy shared `isFavorite` is not writable).
+ */
+export class UpdateMapPointDto extends PartialType(CreateMapPointDto, {
+  skipNullProperties: false,
+}) {}
