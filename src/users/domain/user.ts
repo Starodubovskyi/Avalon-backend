@@ -5,6 +5,7 @@ import { Status } from '../../statuses/domain/status';
 import { ApiProperty } from '@nestjs/swagger';
 import databaseConfig from '../../database/config/database.config';
 import { DatabaseConfig } from '../../database/config/database-config.type';
+import { LOCALES, Locale } from '../user-profile.constants';
 
 // <database-block>
 const idType = (databaseConfig() as DatabaseConfig).isDocumentDatabase
@@ -53,6 +54,25 @@ export class User {
     example: 'Doe',
   })
   lastName: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'Operations manager',
+  })
+  headline?: string | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  @Expose({ groups: ['me', 'admin'] })
+  bio?: string | null;
+
+  @ApiProperty({ type: String, nullable: true, example: '+40 721 000 000' })
+  @Expose({ groups: ['me', 'admin'] })
+  phone?: string | null;
+
+  @ApiProperty({ enum: LOCALES, example: 'en' })
+  @Expose({ groups: ['me', 'admin'] })
+  locale?: Locale;
 
   @ApiProperty({
     type: () => FileType,

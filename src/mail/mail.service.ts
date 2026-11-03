@@ -166,4 +166,46 @@ export class MailService {
       },
     });
   }
+
+  /**
+   * Link to confirm the contact email of a map point. English only (the
+   * point's audience is not the signed-in user's language). Throws when the
+   * mail server is unreachable; the caller decides what to answer.
+   */
+  async pointEmailVerification(
+    mailData: MailData<{ token: string; pointTitle: string }>,
+  ): Promise<void> {
+    const title = 'Confirm the company email';
+    const url = new URL(
+      this.configService.getOrThrow('app.frontendDomain', {
+        infer: true,
+      }) + '/verify-email',
+    );
+    url.searchParams.set('token', mailData.data.token);
+
+    await this.mailerService.sendMail({
+      to: mailData.to,
+      subject: title,
+      text: `${title}: ${mailData.data.pointTitle}. ${url.toString()}`,
+      templatePath: path.join(
+        this.configService.getOrThrow('app.workingDirectory', {
+          infer: true,
+        }),
+        'src',
+        'mail',
+        'mail-templates',
+        'point-email-verification.hbs',
+      ),
+      context: {
+        title,
+        url: url.toString(),
+        actionTitle: 'Confirm email',
+        app_name: this.configService.get('app.name', { infer: true }),
+        text1: 'This address was added as the contact email of',
+        pointTitle: mailData.data.pointTitle,
+        text2:
+          'If you manage this company, confirm the address with the button below. Otherwise ignore this message.',
+      },
+    });
+  }
 }

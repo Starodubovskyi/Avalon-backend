@@ -1,4 +1,5 @@
 import { NullableType } from '../../../utils/types/nullable.type';
+import { VisibleUsers } from '../../../users-directory/user-visibility';
 import { PostCommentData, PostCommentRef } from '../../domain/post-comment';
 
 export interface NewPostComment {
@@ -10,13 +11,13 @@ export interface NewPostComment {
 /** Soft-deleted comments are never returned. */
 export abstract class PostCommentRepository {
   /**
-   * The latest `limit` comments, ascending by time. With `authorRoleIds`,
-   * only comments by authors with these roles plus the viewer's own.
+   * The latest `limit` comments, ascending by time. With `authors`, only
+   * comments by authors the viewer may see plus the viewer's own.
    */
   abstract findByPost(
     postId: string,
     limit: number,
-    visibility?: { viewerId: number; authorRoleIds: number[] | null },
+    visibility?: { viewerId: number; authors: VisibleUsers | null },
   ): Promise<PostCommentData[]>;
 
   abstract create(data: NewPostComment): Promise<PostCommentData>;

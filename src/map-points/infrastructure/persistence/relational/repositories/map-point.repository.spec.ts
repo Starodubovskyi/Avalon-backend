@@ -2,6 +2,7 @@ import { Repository } from 'typeorm';
 import { MapPointEntity } from '../entities/map-point.entity';
 import { MapPointFavoriteEntity } from '../entities/map-point-favorite.entity';
 import { MapPointRelationalRepository } from './map-point.repository';
+import { MapPointParentCycleError } from '../../map-point.repository';
 
 /** Stored row as TypeORM loads it: `logo` is select: false (not loaded). */
 function storedPoint(): MapPointEntity {
@@ -33,7 +34,9 @@ describe('MapPointRelationalRepository.update', () => {
     create: jest.Mock;
     save: jest.Mock;
     createQueryBuilder: jest.Mock;
+    manager: { transaction: jest.Mock };
   };
+  let manager: { getRepository: jest.Mock; query: jest.Mock };
   let repository: MapPointRelationalRepository;
 
   beforeEach(() => {
@@ -50,6 +53,16 @@ describe('MapPointRelationalRepository.update', () => {
       create: jest.fn((entity: MapPointEntity) => entity),
       save: jest.fn((entity: MapPointEntity) => Promise.resolve(entity)),
       createQueryBuilder: jest.fn(() => query),
+      // update() runs in a transaction on the same repository
+      manager: {
+        transaction: jest.fn((work: (m: unknown) => Promise<unknown>) =>
+          work(manager),
+        ),
+      },
+    };
+    manager = {
+      getRepository: jest.fn(() => points),
+      query: jest.fn().mockResolvedValue([]),
     };
     repository = new MapPointRelationalRepository(
       points as unknown as Repository<MapPointEntity>,
@@ -110,6 +123,59 @@ describe('MapPointRelationalRepository.update', () => {
       'logo',
       'data:image/png;base64,iVBORw0KGgo=',
     );
+  });
+
+  it('should clear the email verification when the email changes, and only then', async () => {
+    points.findOne.mockResolvedValue(
+      Object.assign(storedPoint(), {
+        email: 'office@avalon.example',
+        emailVerifiedAt: new Date('2026-02-01T00:00:00.000Z'),
+      }),
+    );
+
+    await repository.update('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', {
+      email: 'office@avalon.example',
+      firstName: 'Same email',
+    });
+    expect(saved()).not.toHaveProperty('emailVerifiedAt');
+
+    points.save.mockClear();
+    await repository.update('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', {
+      email: 'new@avalon.example',
+    });
+    expect(saved()).toMatchObject({
+      email: 'new@avalon.example',
+      emailVerifiedAt: null,
+    });
+    // the resend cooldown survives an email change (no mail bombing)
+    expect(saved()).not.toHaveProperty('emailVerificationSentAt');
+  });
+
+  it('should read the point under a row lock', async () => {
+    await repository.update('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', {
+      firstName: 'X',
+    });
+    expect(points.findOne).toHaveBeenCalledWith({
+      where: { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' },
+      lock: { mode: 'pessimistic_write' },
+    });
+  });
+
+  it('should refuse a parent that is one of the point branches, under the parent lock', async () => {
+    const id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    const branch = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+    manager.query
+      .mockResolvedValueOnce([]) // pg_advisory_xact_lock
+      .mockResolvedValueOnce([{ id }]); // ancestors of the branch
+
+    await expect(
+      repository.update(id, { parentId: branch }),
+    ).rejects.toBeInstanceOf(MapPointParentCycleError);
+
+    expect(manager.query.mock.calls[0][0]).toContain(
+      "pg_advisory_xact_lock(hashtext('map_point.parent'), 0)",
+    );
+    expect(points.save).not.toHaveBeenCalled();
   });
 
   it('should return null (→ 404) when the point does not exist', async () => {

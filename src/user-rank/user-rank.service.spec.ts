@@ -8,6 +8,7 @@ const zero: Omit<UserRankInputs, 'userId'> = {
   posts: 0,
   comments: 0,
   agencyRequests: 0,
+  boostPoints: 0,
 };
 
 describe('calculateRank', () => {
@@ -30,8 +31,16 @@ describe('calculateRank', () => {
         posts: 30,
         comments: 40,
         agencyRequests: 12,
+        boostPoints: 250,
       }),
-    ).toBe(800 + 100 + 90 + 40 + 60);
+    ).toBe(800 + 100 + 90 + 40 + 60 + 250);
+  });
+
+  it('should add the points of active RANK boosts as they are', () => {
+    expect(calculateRank({ userId: 1, ...zero, boostPoints: 500 })).toBe(500);
+    expect(
+      calculateRank({ userId: 1, ...zero, mapPoints: 1, boostPoints: 250 }),
+    ).toBe(260);
   });
 
   it('should be 0 without any contribution', () => {

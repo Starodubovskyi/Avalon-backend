@@ -36,7 +36,7 @@ export class UsersDirectoryController {
   @ApiOkResponse({
     type: [UserCard],
     description:
-      'Without the caller and soft-deleted users; viewers only get admin/staff. Max 200.',
+      'Without the caller and soft-deleted users; viewers get admin/staff and public profiles (owners and active members of public points), without the emails of other clients. Max 200.',
   })
   @HttpCode(HttpStatus.OK)
   findAll(

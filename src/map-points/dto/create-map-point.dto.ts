@@ -7,6 +7,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   IsUUID,
   Max,
   MaxLength,
@@ -18,14 +19,18 @@ import { IsPresent } from '../../utils/validators/is-present';
 import {
   ACTIVITY_CODES,
   ActivityCode,
+  DEFAULT_ACTIVITY_SLOTS,
   DEFAULT_MAP_POINT_KIND,
-  FREE_ACTIVITIES_LIMIT,
+  MAP_POINT_DESCRIPTION_MAX_LENGTH,
   MAP_POINT_KINDS,
   MAP_POINT_LOGO_MAX_LENGTH,
   MAP_POINT_LOGO_MIME_TYPES,
   MAP_POINT_NOTES_MAX_LENGTH,
   MAP_POINT_TITLE_MAX_LENGTH,
+  MAP_POINT_VISIBILITIES,
+  MAP_POINT_WEBSITE_MAX_LENGTH,
   MapPointKind,
+  MapPointVisibility,
 } from '../map-point.constants';
 import { IsActivityCodes, uniqueItems } from './map-point-validators';
 
@@ -113,7 +118,7 @@ export class CreateMapPointDto {
     isArray: true,
     default: [],
     example: ['ship_agency'],
-    description: `Business Activity codes (duplicates are dropped). Free plan: at most ${FREE_ACTIVITIES_LIMIT}; more → 422 { activities: "premiumRequired" }. Unknown code or null → 422 { activities: "invalid" }.`,
+    description: `Business Activity codes (duplicates are dropped). At most \`activitySlots\` of the point (a new point has ${DEFAULT_ACTIVITY_SLOTS}); more → 422 { activities: "premiumRequired" }. Unknown code or null → 422 { activities: "invalid" }.`,
   })
   @Transform(uniqueItems)
   @IsPresent()
@@ -174,4 +179,54 @@ export class CreateMapPointDto {
   @IsOptional()
   @IsUUID()
   photoId?: string;
+
+  @ApiPropertyOptional({
+    enum: MAP_POINT_VISIBILITIES,
+    description:
+      'public: everyone signed in; team: admin/staff and the owner only. Default on create: team for private_person, else public. 422 { visibility: "invalid" }.',
+  })
+  @IsPresent()
+  @IsIn(MAP_POINT_VISIBILITIES, { message: 'invalid' })
+  visibility?: MapPointVisibility;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: MAP_POINT_DESCRIPTION_MAX_LENGTH,
+    description:
+      'About the company; null or "" clears it. 422 { description: "tooLong" }.',
+  })
+  @Transform(trimToNull)
+  @IsOptional()
+  @IsString({ message: 'invalid' })
+  @MaxLength(MAP_POINT_DESCRIPTION_MAX_LENGTH, { message: 'tooLong' })
+  description?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    maxLength: MAP_POINT_WEBSITE_MAX_LENGTH,
+    example: 'https://avalon.example',
+    description:
+      'http(s) URL; null or "" clears it. 422 { website: "invalid" | "tooLong" }.',
+  })
+  @Transform(trimToNull)
+  @IsOptional()
+  @MaxLength(MAP_POINT_WEBSITE_MAX_LENGTH, { message: 'tooLong' })
+  @IsUrl(
+    { protocols: ['http', 'https'], require_protocol: true },
+    { message: 'invalid' },
+  )
+  website?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description:
+      'Parent company (for a branch): a point visible to the caller, not the point itself or one of its branches; null clears it. 422 { parentId: "invalid" | "notFound" }.',
+  })
+  @IsOptional()
+  @IsUUID('all', { message: 'invalid' })
+  parentId?: string | null;
 }

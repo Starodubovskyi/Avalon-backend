@@ -15,6 +15,11 @@ export class MailerService {
       ignoreTLS: configService.get('mail.ignoreTLS', { infer: true }),
       secure: configService.get('mail.secure', { infer: true }),
       requireTLS: configService.get('mail.requireTLS', { infer: true }),
+      // Fail fast on an unreachable or unconfigured SMTP host: a serverless
+      // request must answer (503 mailUnavailable) well before the platform limit
+      connectionTimeout: 8_000,
+      greetingTimeout: 8_000,
+      socketTimeout: 15_000,
       auth: {
         user: configService.get('mail.user', { infer: true }),
         pass: configService.get('mail.password', { infer: true }),

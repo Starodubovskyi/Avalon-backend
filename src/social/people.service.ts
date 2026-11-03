@@ -6,26 +6,34 @@ import {
 } from '@nestjs/common';
 import {
   NetworkActor,
-  visibleRoleIds,
+  redactUserCard,
+  visibleUsers,
 } from '../users-directory/user-visibility';
 import { Person } from './domain/person';
 import { QueryPeopleDto } from './dto/query-people.dto';
 import { PeopleRepository } from './infrastructure/persistence/people.repository';
 import { PEOPLE_LIMIT } from './social.constants';
 
-/** Same visibility as the directory: viewers only see (and follow) admin/staff. */
+/**
+ * Same visibility as the directory: viewers see (and follow) admin/staff and
+ * public profiles, without other clients' emails.
+ */
 @Injectable()
 export class PeopleService {
   constructor(private readonly peopleRepository: PeopleRepository) {}
 
-  findPeople(query: QueryPeopleDto, actor: NetworkActor): Promise<Person[]> {
-    return this.peopleRepository.findPeople({
+  async findPeople(
+    query: QueryPeopleDto,
+    actor: NetworkActor,
+  ): Promise<Person[]> {
+    const people = await this.peopleRepository.findPeople({
       viewerId: actor.userId,
-      roleIds: visibleRoleIds(actor),
+      visibleUsers: visibleUsers(actor),
       search: query.search,
       filter: query.filter ?? 'all',
       limit: PEOPLE_LIMIT,
     });
+    return people.map((person) => redactUserCard(person, actor));
   }
 
   async follow(personId: number, actor: NetworkActor): Promise<Person> {
@@ -58,12 +66,12 @@ export class PeopleService {
   ): Promise<Person> {
     const person = await this.peopleRepository.findPerson({
       viewerId: actor.userId,
-      roleIds: visibleRoleIds(actor),
+      visibleUsers: visibleUsers(actor),
       personId,
     });
     if (!person) {
       throw new NotFoundException('Person not found');
     }
-    return person;
+    return redactUserCard(person, actor);
   }
 }

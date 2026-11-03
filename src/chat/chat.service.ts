@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { UsersDirectoryService } from '../users-directory/users-directory.service';
-import { isTeamRole, NetworkActor } from '../users-directory/user-visibility';
+import {
+  isTeamRole,
+  NetworkActor,
+  redactUserCard,
+} from '../users-directory/user-visibility';
 import { isUniqueViolation } from '../utils/is-unique-violation';
 import {
   CONVERSATION_LIST_LIMIT,
@@ -32,10 +36,13 @@ export class ChatService {
     private readonly dataSource: DataSource,
   ) {}
 
-  findConversations(actor: NetworkActor): Promise<Conversation[]> {
-    return this.conversationRepository.findForMember(
+  async findConversations(actor: NetworkActor): Promise<Conversation[]> {
+    const conversations = await this.conversationRepository.findForMember(
       actor.userId,
       CONVERSATION_LIST_LIMIT,
+    );
+    return conversations.map((conversation) =>
+      this.redactConversation(conversation, actor),
     );
   }
 
@@ -65,11 +72,14 @@ export class ChatService {
     actor: NetworkActor,
   ): Promise<ChatMessage[]> {
     await this.assertMember(conversationId, actor);
-    return this.messageRepository.findMany({
+    const messages = await this.messageRepository.findMany({
       conversationId,
       after: query.after,
       limit: query.limit ?? MESSAGES_DEFAULT_LIMIT,
     });
+    return messages.map((message) =>
+      Object.assign(message, { sender: redactUserCard(message.sender, actor) }),
+    );
   }
 
   async sendMessage(
@@ -171,8 +181,9 @@ export class ChatService {
   }
 
   /**
-   * Viewers may only talk to admin/staff. For them an unknown id is reported
-   * like a hidden one, so the response does not reveal which viewers exist.
+   * Viewers may only talk to admin/staff and public profiles. For them an
+   * unknown id is reported like a hidden one, so the response does not
+   * reveal which viewers exist.
    */
   private async assertReachable(
     actor: NetworkActor,
@@ -218,6 +229,17 @@ export class ChatService {
     if (!conversation) {
       throw this.conversationNotFound();
     }
+    return this.redactConversation(conversation, actor);
+  }
+
+  /** Viewers do not see other clients' emails among the members. */
+  private redactConversation(
+    conversation: Conversation,
+    actor: NetworkActor,
+  ): Conversation {
+    conversation.members = conversation.members.map((member) =>
+      redactUserCard(member, actor),
+    );
     return conversation;
   }
 

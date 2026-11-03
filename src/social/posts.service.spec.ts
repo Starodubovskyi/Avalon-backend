@@ -112,13 +112,16 @@ describe('PostsService', () => {
   });
 
   describe('findFeed', () => {
-    it('should default to the all scope and 20 posts, team authors only for a viewer', async () => {
+    it('should default to the all scope and 20 posts, team and public-profile authors for a viewer', async () => {
       await service.findFeed({}, VIEWER);
 
       expect(posts.findFeed).toHaveBeenCalledWith({
         viewerId: 9,
         scope: 'all',
-        authorRoleIds: [RoleEnum.admin, RoleEnum.staff],
+        authors: {
+          roleIds: [RoleEnum.admin, RoleEnum.staff],
+          publicProfiles: true,
+        },
         before: undefined,
         limit: 20,
       });
@@ -133,7 +136,7 @@ describe('PostsService', () => {
       expect(posts.findFeed).toHaveBeenCalledWith({
         viewerId: 7,
         scope: 'following',
-        authorRoleIds: null,
+        authors: null,
         before: '2026-10-31T10:00:00.000Z',
         limit: 5,
       });
@@ -238,11 +241,14 @@ describe('PostsService', () => {
 
       expect(comments.findByPost).toHaveBeenCalledWith(POST_ID, 200, {
         viewerId: VIEWER.userId,
-        authorRoleIds: [RoleEnum.admin, RoleEnum.staff],
+        authors: {
+          roleIds: [RoleEnum.admin, RoleEnum.staff],
+          publicProfiles: true,
+        },
       });
       expect(comments.findByPost).toHaveBeenLastCalledWith(POST_ID, 200, {
         viewerId: OTHER_STAFF.userId,
-        authorRoleIds: null,
+        authors: null,
       });
       expect(own.canDelete).toBe(true);
       expect(foreign.canDelete).toBe(false);

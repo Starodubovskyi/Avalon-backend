@@ -15,6 +15,10 @@ export class UserMapper {
     domainEntity.socialId = raw.socialId;
     domainEntity.firstName = raw.firstName;
     domainEntity.lastName = raw.lastName;
+    domainEntity.headline = raw.headline ?? null;
+    domainEntity.bio = raw.bio ?? null;
+    domainEntity.phone = raw.phone ?? null;
+    domainEntity.locale = raw.locale;
     if (raw.photo) {
       domainEntity.photo = FileMapper.toDomain(raw.photo);
     }
@@ -61,6 +65,19 @@ export class UserMapper {
     persistenceEntity.socialId = domainEntity.socialId;
     persistenceEntity.firstName = domainEntity.firstName;
     persistenceEntity.lastName = domainEntity.lastName;
+    // undefined leaves the stored value as it is (save() skips it)
+    if (domainEntity.headline !== undefined) {
+      persistenceEntity.headline = domainEntity.headline;
+    }
+    if (domainEntity.bio !== undefined) {
+      persistenceEntity.bio = domainEntity.bio;
+    }
+    if (domainEntity.phone !== undefined) {
+      persistenceEntity.phone = domainEntity.phone;
+    }
+    if (domainEntity.locale !== undefined) {
+      persistenceEntity.locale = domainEntity.locale;
+    }
     persistenceEntity.photo = photo;
     persistenceEntity.role = role;
     persistenceEntity.status = status;

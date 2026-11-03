@@ -17,10 +17,16 @@ import { FileEntity } from '../../../../../files/infrastructure/persistence/rela
 import {
   ACTIVITY_CODES,
   ActivityCode,
+  DEFAULT_ACTIVITY_SLOTS,
   DEFAULT_MAP_POINT_KIND,
+  MAP_POINT_DESCRIPTION_MAX_LENGTH,
   MAP_POINT_KINDS,
   MAP_POINT_LOGO_MAX_LENGTH,
+  MAP_POINT_VISIBILITIES,
+  MAP_POINT_WEBSITE_MAX_LENGTH,
+  MAX_ACTIVITY_SLOTS,
   MapPointKind,
+  MapPointVisibility,
 } from '../../../../map-point.constants';
 
 /** `'a', 'b'` for CHECK expressions (constant code lists only). */
@@ -28,8 +34,8 @@ const sqlList = (values: readonly string[]): string =>
   values.map((value) => `'${value}'`).join(', ');
 
 // Names mirror migrations 1788523200000-CreateMapPoint,
-// 1793400000000-AddMapPointKind and 1794000000000-GeoPointsV2, so
-// migration:generate stays empty.
+// 1793400000000-AddMapPointKind, 1794000000000-GeoPointsV2 and
+// 1794100000000-WalletProfilesI18n, so migration:generate stays empty.
 @Entity({
   name: 'map_point',
 })
@@ -42,6 +48,23 @@ const sqlList = (values: readonly string[]): string =>
 @Check(
   'CHK_map_point_logo',
   `"logo" IS NULL OR ("logo" LIKE 'data:image/%' AND char_length("logo") <= ${MAP_POINT_LOGO_MAX_LENGTH})`,
+)
+@Check(
+  'CHK_map_point_visibility',
+  `"visibility" IN (${sqlList(MAP_POINT_VISIBILITIES)})`,
+)
+@Check(
+  'CHK_map_point_description',
+  `char_length("description") <= ${MAP_POINT_DESCRIPTION_MAX_LENGTH}`,
+)
+@Check('CHK_map_point_parent_not_self', `"parentId" <> "id"`)
+@Check(
+  'CHK_map_point_activitySlots',
+  `"activitySlots" BETWEEN 1 AND ${MAX_ACTIVITY_SLOTS}`,
+)
+@Check(
+  'CHK_map_point_activities_slots',
+  `cardinality("activities") <= "activitySlots"`,
 )
 export class MapPointEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', {
@@ -65,6 +88,9 @@ export class MapPointEntity extends EntityRelationalHelper {
   @Column({ type: 'varchar', length: 16, default: DEFAULT_MAP_POINT_KIND })
   kind: MapPointKind;
 
+  @Column({ type: 'varchar', length: 10, default: 'public' })
+  visibility: MapPointVisibility;
+
   @Column({ type: 'double precision' })
   lat: number;
 
@@ -83,6 +109,10 @@ export class MapPointEntity extends EntityRelationalHelper {
 
   @Column({ type: 'text', array: true, default: [] })
   activities: ActivityCode[];
+
+  /** Bought with credits; activities never outnumber slots (CHECK). */
+  @Column({ type: 'smallint', default: DEFAULT_ACTIVITY_SLOTS })
+  activitySlots: number;
 
   /**
    * Base64 data URL (image/webp, image/png or image/jpeg), up to 150 000
@@ -107,6 +137,36 @@ export class MapPointEntity extends EntityRelationalHelper {
 
   @Column({ type: 'varchar', length: 500, nullable: true })
   address: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: MAP_POINT_WEBSITE_MAX_LENGTH,
+    nullable: true,
+  })
+  website: string | null;
+
+  /** Parent company of a branch. */
+  @Index('IDX_map_point_parentId')
+  @Column({ type: 'uuid', nullable: true })
+  parentId: string | null;
+
+  @ManyToOne(() => MapPointEntity, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({
+    name: 'parentId',
+    foreignKeyConstraintName: 'FK_map_point_parentId',
+  })
+  parent?: MapPointEntity | null;
+
+  /** Set when the current `email` was confirmed; cleared when it changes. */
+  @Column({ type: 'timestamptz', nullable: true })
+  emailVerifiedAt: Date | null;
+
+  /** Last verification email (one per minute). */
+  @Column({ type: 'timestamptz', nullable: true })
+  emailVerificationSentAt: Date | null;
 
   @Column({ type: 'text', nullable: true })
   notes: string | null;

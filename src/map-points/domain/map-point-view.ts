@@ -25,6 +25,45 @@ export class MapPointView extends MapPoint {
     description: 'Rank of the user who created the point',
   })
   rank: number;
+
+  @ApiProperty({
+    type: Boolean,
+    description: 'The caller may edit/delete it (owner or admin/staff)',
+  })
+  canEdit: boolean;
+
+  @ApiProperty({
+    type: Number,
+    example: 3,
+    description:
+      'Team size: the owner (unless their account was deleted) plus active members',
+  })
+  memberCount: number;
+}
+
+/** What a view adds to the stored point, for one caller. */
+export interface MapPointViewExtras {
+  isFavorite: boolean;
+  rank: number;
+  canEdit: boolean;
+  memberCount: number;
+}
+
+/** POST /map-points/email-verification/confirm */
+export class MapPointEmailConfirmation {
+  @ApiProperty({ type: String, format: 'uuid' })
+  pointId: string;
+
+  @ApiProperty({ type: String, example: 'Avalon Shipping SRL' })
+  title: string;
+
+  @ApiProperty({ type: String, example: 'office@avalon.example' })
+  email: string;
+}
+
+export class MapPointEmailVerificationSent {
+  @ApiProperty({ type: Boolean, example: true })
+  sent: true;
 }
 
 export class MapPointFavoriteState {
@@ -44,12 +83,10 @@ export interface MapPointLogo {
  */
 export function toMapPointView(
   point: MapPoint,
-  isFavorite: boolean,
-  rank: number,
+  extras: MapPointViewExtras,
 ): MapPointView {
   return Object.assign(new MapPointView(), point, {
     logoVersion: point.hasLogo ? String(point.updatedAt.getTime()) : null,
-    isFavorite,
-    rank,
+    ...extras,
   });
 }
