@@ -13,6 +13,7 @@ import validationOptions from './utils/validation-options';
 import { AllConfigType } from './config/config.type';
 import { ResolvePromisesInterceptor } from './utils/serializer.interceptor';
 import { buildCorsOptions } from './config/cors';
+import { routeJsonParser } from './utils/route-json-parser';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -22,12 +23,13 @@ async function bootstrap() {
   const configService = app.get(ConfigService<AllConfigType>);
 
   app.enableShutdownHooks();
-  app.setGlobalPrefix(
-    configService.getOrThrow('app.apiPrefix', { infer: true }),
-    {
-      exclude: ['/'],
-    },
-  );
+  const apiPrefix = configService.getOrThrow('app.apiPrefix', { infer: true });
+  app.setGlobalPrefix(apiPrefix, {
+    exclude: ['/'],
+  });
+  // Map point logos are data URLs of up to 150 000 chars, above the default
+  // 100 KB JSON limit: the larger limit applies to this route only.
+  app.use(`/${apiPrefix}/v1/map-points`, routeJsonParser('256kb'));
   app.enableVersioning({
     type: VersioningType.URI,
   });

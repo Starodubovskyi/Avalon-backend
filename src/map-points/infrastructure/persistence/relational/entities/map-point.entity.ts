@@ -9,21 +9,39 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VirtualColumn,
 } from 'typeorm';
 import { EntityRelationalHelper } from '../../../../../utils/relational-entity-helper';
 import { UserEntity } from '../../../../../users/infrastructure/persistence/relational/entities/user.entity';
 import { FileEntity } from '../../../../../files/infrastructure/persistence/relational/entities/file.entity';
-import { MapPointKind } from '../../../../map-point.constants';
+import {
+  ACTIVITY_CODES,
+  ActivityCode,
+  DEFAULT_MAP_POINT_KIND,
+  MAP_POINT_KINDS,
+  MAP_POINT_LOGO_MAX_LENGTH,
+  MapPointKind,
+} from '../../../../map-point.constants';
 
-// Names mirror migrations 1788523200000-CreateMapPoint and
-// 1793400000000-AddMapPointKind, so migration:generate stays empty.
+/** `'a', 'b'` for CHECK expressions (constant code lists only). */
+const sqlList = (values: readonly string[]): string =>
+  values.map((value) => `'${value}'`).join(', ');
+
+// Names mirror migrations 1788523200000-CreateMapPoint,
+// 1793400000000-AddMapPointKind and 1794000000000-GeoPointsV2, so
+// migration:generate stays empty.
 @Entity({
   name: 'map_point',
 })
 @Index('IDX_map_point_userId_createdAt', ['userId', 'createdAt'])
+@Check('CHK_map_point_kind', `"kind" IN (${sqlList(MAP_POINT_KINDS)})`)
 @Check(
-  'CHK_map_point_kind',
-  `"kind" IN ('company', 'agency', 'terminal', 'authority', 'person', 'employee')`,
+  'CHK_map_point_activities',
+  `"activities" <@ ARRAY[${sqlList(ACTIVITY_CODES)}]::text[]`,
+)
+@Check(
+  'CHK_map_point_logo',
+  `"logo" IS NULL OR ("logo" LIKE 'data:image/%' AND char_length("logo") <= ${MAP_POINT_LOGO_MAX_LENGTH})`,
 )
 export class MapPointEntity extends EntityRelationalHelper {
   @PrimaryGeneratedColumn('uuid', {
@@ -44,7 +62,7 @@ export class MapPointEntity extends EntityRelationalHelper {
   user?: UserEntity;
 
   @Index('IDX_map_point_kind')
-  @Column({ type: 'varchar', length: 16, default: 'person' })
+  @Column({ type: 'varchar', length: 16, default: DEFAULT_MAP_POINT_KIND })
   kind: MapPointKind;
 
   @Column({ type: 'double precision' })
@@ -59,8 +77,27 @@ export class MapPointEntity extends EntityRelationalHelper {
   @Column({ type: 'varchar', length: 255, default: '' })
   lastName: string;
 
+  /** Legacy free-text activity, superseded by `activities`. */
   @Column({ type: 'varchar', length: 255, default: '' })
   activity: string;
+
+  @Column({ type: 'text', array: true, default: [] })
+  activities: ActivityCode[];
+
+  /**
+   * Base64 data URL (image/webp, image/png or image/jpeg), up to 150 000
+   * chars. Never selected by default (lists stay small): read it with an
+   * explicit select (GET /map-points/:id/logo); `hasLogo` tells if it is set.
+   */
+  @Column({ type: 'text', nullable: true, select: false })
+  logo?: string | null;
+
+  /** Computed on read; never written or synchronised. */
+  @VirtualColumn({
+    type: 'boolean',
+    query: (alias) => `${alias}."logo" IS NOT NULL`,
+  })
+  hasLogo?: boolean;
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   phone: string | null;
@@ -84,6 +121,10 @@ export class MapPointEntity extends EntityRelationalHelper {
   })
   photo?: FileEntity | null;
 
+  /**
+   * Legacy team-wide flag, no longer read or written by the API: favorites
+   * are per user (map_point_favorite). Kept so existing data is untouched.
+   */
   @Column({ type: 'boolean', default: false })
   isFavorite: boolean;
 
