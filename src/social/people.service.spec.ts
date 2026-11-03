@@ -46,12 +46,15 @@ describe('PeopleService', () => {
     service = new PeopleService(people as unknown as PeopleRepository);
   });
 
-  it('should restrict viewers to admin and staff', async () => {
+  it('should restrict viewers to admin, staff and public profiles', async () => {
     await service.findPeople({ search: 'ann', filter: 'friends' }, VIEWER);
 
     expect(people.findPeople).toHaveBeenCalledWith({
       viewerId: 9,
-      roleIds: [RoleEnum.admin, RoleEnum.staff],
+      visibleUsers: {
+        roleIds: [RoleEnum.admin, RoleEnum.staff],
+        publicProfiles: true,
+      },
       search: 'ann',
       filter: 'friends',
       limit: 200,
@@ -62,7 +65,11 @@ describe('PeopleService', () => {
     await service.findPeople({}, STAFF);
 
     expect(people.findPeople).toHaveBeenCalledWith(
-      expect.objectContaining({ viewerId: 7, roleIds: null, filter: 'all' }),
+      expect.objectContaining({
+        viewerId: 7,
+        visibleUsers: null,
+        filter: 'all',
+      }),
     );
   });
 
@@ -81,7 +88,10 @@ describe('PeopleService', () => {
     );
     expect(people.findPerson).toHaveBeenCalledWith({
       viewerId: 9,
-      roleIds: [RoleEnum.admin, RoleEnum.staff],
+      visibleUsers: {
+        roleIds: [RoleEnum.admin, RoleEnum.staff],
+        publicProfiles: true,
+      },
       personId: 4,
     });
     expect(people.follow).not.toHaveBeenCalled();

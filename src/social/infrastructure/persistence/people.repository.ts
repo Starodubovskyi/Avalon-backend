@@ -1,12 +1,13 @@
 import { NullableType } from '../../../utils/types/nullable.type';
+import { VisibleUsers } from '../../../users-directory/user-visibility';
 import { Person } from '../../domain/person';
 import { PeopleFilter } from '../../social.constants';
 
 export interface PeopleQuery {
   /** The caller: never part of the result; drives followedByMe/followsMe. */
   viewerId: number;
-  /** null = any role. */
-  roleIds: number[] | null;
+  /** null = everyone. */
+  visibleUsers: VisibleUsers | null;
   search?: string;
   /** friends = mutual follow. */
   filter: PeopleFilter;
@@ -15,7 +16,7 @@ export interface PeopleQuery {
 
 export interface PersonQuery {
   viewerId: number;
-  roleIds: number[] | null;
+  visibleUsers: VisibleUsers | null;
   personId: number;
 }
 

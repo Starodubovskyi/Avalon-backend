@@ -6,6 +6,11 @@ import {
   userOrderBy,
   userSearchCondition,
 } from '../../../../../users-directory/infrastructure/persistence/relational/user-search';
+import {
+  emailSearchScope,
+  visibleUserSql,
+} from '../../../../../users-directory/infrastructure/persistence/relational/user-visibility-sql';
+import { VisibleUsers } from '../../../../../users-directory/user-visibility';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { SqlParams } from '../../../../../utils/sql-params';
 import { Person } from '../../../../domain/person';
@@ -20,7 +25,7 @@ import { PersonRow, SocialMapper } from '../mappers/social.mapper';
 
 interface PeopleSelect {
   viewerId: number;
-  roleIds: number[] | null;
+  visibleUsers: VisibleUsers | null;
   search?: string;
   filter: PeopleFilter;
   personId?: number;
@@ -68,15 +73,22 @@ export class PeopleRelationalRepository implements PeopleRepository {
     const followsMe = `EXISTS (SELECT 1 FROM "follow" f WHERE f."followerId" = u."id" AND f."followeeId" = ${viewer})`;
 
     const where = ['u."deletedAt" IS NULL', `u."id" <> ${viewer}`];
-    if (query.roleIds) {
-      where.push(`u."roleId" = ANY(${params.add(query.roleIds)}::int[])`);
+    const visible = visibleUserSql('u', query.visibleUsers, params);
+    if (visible) {
+      where.push(visible);
     }
     if (query.personId !== undefined) {
       where.push(`u."id" = ${params.add(query.personId)}`);
     }
     const pattern = toUserSearchPattern(query.search);
     if (pattern) {
-      where.push(userSearchCondition('u', params.add(pattern)));
+      where.push(
+        userSearchCondition(
+          'u',
+          params.add(pattern),
+          emailSearchScope(query.visibleUsers, query.viewerId, params),
+        ),
+      );
     }
     if (query.filter === 'following' || query.filter === 'friends') {
       where.push(followedByMe);
@@ -100,7 +112,7 @@ export class PeopleRelationalRepository implements PeopleRepository {
           WHERE p."authorId" = u."id" AND p."deletedAt" IS NULL) AS "posts"
        FROM "user" u
        WHERE ${where.join(' AND ')}
-       ORDER BY ${userOrderBy('u')}
+       ORDER BY ${userOrderBy('u', query.visibleUsers === null)}
        LIMIT ${params.add(query.limit)}`,
       params.values,
     );

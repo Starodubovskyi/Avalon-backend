@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import { NullableType } from '../../../../../utils/types/nullable.type';
 import { SqlParams } from '../../../../../utils/sql-params';
+import { visibleUserSql } from '../../../../../users-directory/infrastructure/persistence/relational/user-visibility-sql';
 import { PostData, PostRef } from '../../../../domain/post';
 import { FeedFilter, PostRepository } from '../../post.repository';
 import { PostLikeEntity } from '../entities/post-like.entity';
@@ -22,12 +23,12 @@ export class PostRelationalRepository implements PostRepository {
     const params = new SqlParams();
     const viewer = params.add(filter.viewerId);
     const where = ['p."deletedAt" IS NULL'];
-    const roles = filter.authorRoleIds
-      ? params.add(filter.authorRoleIds)
-      : null;
-    if (roles) {
-      where.push(`(p."authorId" = ${viewer} OR u."roleId" = ANY(${roles}))`);
+    const visibleAuthor = visibleUserSql('u', filter.authors, params);
+    if (visibleAuthor) {
+      where.push(`(p."authorId" = ${viewer} OR ${visibleAuthor})`);
     }
+    // Hidden authors' comments are not counted either.
+    const visibleCommenter = visibleUserSql('cu', filter.authors, params);
     if (filter.scope === 'following') {
       where.push(
         `(p."authorId" = ${viewer} OR p."authorId" IN (SELECT f."followeeId" FROM "follow" f WHERE f."followerId" = ${viewer}))`,
@@ -44,7 +45,7 @@ export class PostRelationalRepository implements PostRepository {
       viewer,
       where,
       `ORDER BY p."createdAt" DESC, p."id" DESC LIMIT ${params.add(filter.limit)}`,
-      roles,
+      visibleCommenter,
     );
   }
 
@@ -102,12 +103,13 @@ export class PostRelationalRepository implements PostRepository {
     viewer: string,
     where: string[],
     tail = '',
-    commentRoles: string | null = null,
+    visibleCommenter: string | null = null,
   ): Promise<PostData[]> {
-    // Hidden authors' comments are not counted, so the count matches the visible thread.
-    const commentVisible = commentRoles
+    // Hidden authors' comments are not counted, so the count matches the
+    // visible thread. `visibleCommenter` is a condition on the alias "cu".
+    const commentVisible = visibleCommenter
       ? `AND (pc."authorId" = ${viewer} OR EXISTS (SELECT 1 FROM "user" cu
-              WHERE cu."id" = pc."authorId" AND cu."roleId" = ANY(${commentRoles})))`
+              WHERE cu."id" = pc."authorId" AND ${visibleCommenter}))`
       : '';
     // Authors stay visible even if their account was soft-deleted.
     const rows: PostRow[] = await this.postRepository.query(

@@ -1,4 +1,5 @@
 import { NullableType } from '../../../utils/types/nullable.type';
+import { VisibleUsers } from '../../../users-directory/user-visibility';
 import { PostData, PostRef } from '../../domain/post';
 import { FeedScope } from '../../social.constants';
 
@@ -7,8 +8,8 @@ export interface FeedFilter {
   viewerId: number;
   /** following = authors the viewer follows + the viewer. */
   scope: FeedScope;
-  /** Only posts by authors with these roles (plus the viewer's own); null = everyone. */
-  authorRoleIds: number[] | null;
+  /** Only posts by authors the viewer may see (plus the viewer's own); null = everyone. */
+  authors: VisibleUsers | null;
   /** ISO date-time: only posts created strictly before it. */
   before?: string;
   limit: number;

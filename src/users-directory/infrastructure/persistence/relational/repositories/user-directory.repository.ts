@@ -18,6 +18,11 @@ import {
   userOrderBy,
   userSearchCondition,
 } from '../user-search';
+import {
+  emailSearchScope,
+  publicProfileSql,
+  visibleUserSql,
+} from '../user-visibility-sql';
 
 @Injectable()
 export class UserDirectoryRelationalRepository
@@ -34,19 +39,26 @@ export class UserDirectoryRelationalRepository
       'u."deletedAt" IS NULL',
       `u."id" <> ${params.add(filter.excludeUserId)}`,
     ];
-    if (filter.roleIds) {
-      where.push(`u."roleId" = ANY(${params.add(filter.roleIds)}::int[])`);
+    const visible = visibleUserSql('u', filter.visibleUsers, params);
+    if (visible) {
+      where.push(visible);
     }
     const pattern = toUserSearchPattern(filter.search);
     if (pattern) {
-      where.push(userSearchCondition('u', params.add(pattern)));
+      where.push(
+        userSearchCondition(
+          'u',
+          params.add(pattern),
+          emailSearchScope(filter.visibleUsers, filter.excludeUserId, params),
+        ),
+      );
     }
 
     const rows: UserCardRow[] = await this.userRepository.query(
       `SELECT u."id", u."firstName", u."lastName", u."email", u."roleId"
        FROM "user" u
        WHERE ${where.join(' AND ')}
-       ORDER BY ${userOrderBy('u')}
+       ORDER BY ${userOrderBy('u', filter.visibleUsers === null)}
        LIMIT ${params.add(filter.limit)}`,
       params.values,
     );
@@ -57,15 +69,20 @@ export class UserDirectoryRelationalRepository
     if (ids.length === 0) {
       return [];
     }
-    const rows: { id: number; roleId: number | null }[] =
-      await this.userRepository.query(
-        `SELECT u."id", u."roleId" FROM "user" u
-         WHERE u."id" = ANY($1::int[]) AND u."deletedAt" IS NULL`,
-        [ids],
-      );
+    const rows: {
+      id: number;
+      roleId: number | null;
+      publicProfile: boolean;
+    }[] = await this.userRepository.query(
+      `SELECT u."id", u."roleId", ${publicProfileSql('u."id"')} AS "publicProfile"
+       FROM "user" u
+       WHERE u."id" = ANY($1::int[]) AND u."deletedAt" IS NULL`,
+      [ids],
+    );
     return rows.map((row) => ({
       id: Number(row.id),
       roleId: row.roleId === null ? null : Number(row.roleId),
+      publicProfile: Boolean(row.publicProfile),
     }));
   }
 }

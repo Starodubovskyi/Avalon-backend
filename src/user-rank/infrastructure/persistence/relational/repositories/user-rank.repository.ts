@@ -11,6 +11,7 @@ interface UserRankRow {
   posts: number | string;
   comments: number | string;
   agencyRequests: number | string;
+  boostPoints: number | string;
 }
 
 @Injectable()
@@ -34,7 +35,9 @@ export class UserRankRelationalRepository implements UserRankRepository {
           JOIN "post" cp ON cp."id" = c."postId" AND cp."deletedAt" IS NULL
           WHERE c."authorId" = t."userId" AND c."deletedAt" IS NULL) AS "comments",
          (SELECT COUNT(*)::int FROM "agency_request" r
-          WHERE r."createdById" = t."userId") AS "agencyRequests"
+          WHERE r."createdById" = t."userId") AS "agencyRequests",
+         (SELECT COALESCE(SUM(b."points"), 0)::int FROM "rank_boost" b
+          WHERE b."userId" = t."userId" AND b."expiresAt" > now()) AS "boostPoints"
        FROM unnest(${params.add(userIds)}::int[]) AS t("userId")
        CROSS JOIN LATERAL (
          SELECT COUNT(*)::int AS "mapPoints",
@@ -51,6 +54,7 @@ export class UserRankRelationalRepository implements UserRankRepository {
       posts: Number(row.posts),
       comments: Number(row.comments),
       agencyRequests: Number(row.agencyRequests),
+      boostPoints: Number(row.boostPoints),
     }));
   }
 }

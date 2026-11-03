@@ -10,6 +10,8 @@ export interface UserRankInputs {
   posts: number;
   comments: number;
   agencyRequests: number;
+  /** Sum of the points of active (not expired) RANK boosts bought with credits. */
+  boostPoints: number;
 }
 
 export function calculateRank(inputs: UserRankInputs): number {
@@ -18,6 +20,7 @@ export function calculateRank(inputs: UserRankInputs): number {
     RANK_WEIGHTS.mapPointWithLogo * inputs.mapPointsWithLogo +
     RANK_WEIGHTS.post * inputs.posts +
     RANK_WEIGHTS.comment * inputs.comments +
-    RANK_WEIGHTS.agencyRequest * inputs.agencyRequests
+    RANK_WEIGHTS.agencyRequest * inputs.agencyRequests +
+    inputs.boostPoints
   );
 }

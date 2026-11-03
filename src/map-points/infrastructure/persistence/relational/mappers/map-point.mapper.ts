@@ -1,4 +1,4 @@
-import { toUserRef } from '../../../../../users/domain/user-ref';
+import { toMapPointCreator } from '../../../../domain/map-point-creator';
 import { MapPoint } from '../../../../domain/map-point';
 import { NewMapPoint } from '../../map-point.repository';
 import { MapPointEntity } from '../entities/map-point.entity';
@@ -14,21 +14,28 @@ export class MapPointMapper {
     domainEntity.id = raw.id;
     domainEntity.userId = raw.userId;
     domainEntity.kind = raw.kind;
+    domainEntity.visibility = raw.visibility;
     domainEntity.lat = raw.lat;
     domainEntity.lng = raw.lng;
     domainEntity.firstName = raw.firstName;
     domainEntity.lastName = raw.lastName;
     domainEntity.activity = raw.activity;
     domainEntity.activities = raw.activities ?? [];
+    domainEntity.activitySlots = Number(raw.activitySlots);
     // hasLogo is a virtual column; the fallback covers a freshly saved entity.
     domainEntity.hasLogo =
       raw.hasLogo ?? (raw.logo !== undefined && raw.logo !== null);
     domainEntity.phone = raw.phone;
     domainEntity.email = raw.email;
+    domainEntity.emailVerified =
+      raw.emailVerifiedAt !== null && raw.emailVerifiedAt !== undefined;
     domainEntity.address = raw.address;
+    domainEntity.description = raw.description;
+    domainEntity.website = raw.website;
+    domainEntity.parentId = raw.parentId;
     domainEntity.notes = raw.notes;
     domainEntity.photoId = raw.photoId;
-    domainEntity.createdBy = toUserRef(raw.user);
+    domainEntity.createdBy = toMapPointCreator(raw.user);
     domainEntity.createdAt = raw.createdAt;
     domainEntity.updatedAt = raw.updatedAt;
     domainEntity.deletedAt = raw.deletedAt;
@@ -42,6 +49,7 @@ export class MapPointMapper {
     }
     persistenceEntity.userId = Number(domainEntity.userId);
     persistenceEntity.kind = domainEntity.kind;
+    persistenceEntity.visibility = domainEntity.visibility;
     persistenceEntity.lat = domainEntity.lat;
     persistenceEntity.lng = domainEntity.lng;
     persistenceEntity.firstName = domainEntity.firstName;
@@ -54,6 +62,9 @@ export class MapPointMapper {
     persistenceEntity.phone = domainEntity.phone;
     persistenceEntity.email = domainEntity.email;
     persistenceEntity.address = domainEntity.address;
+    persistenceEntity.description = domainEntity.description;
+    persistenceEntity.website = domainEntity.website;
+    persistenceEntity.parentId = domainEntity.parentId;
     persistenceEntity.notes = domainEntity.notes;
     persistenceEntity.photoId = domainEntity.photoId;
     if (domainEntity.createdAt) {

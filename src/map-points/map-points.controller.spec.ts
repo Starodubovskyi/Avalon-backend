@@ -1,5 +1,6 @@
 import {
   ClassSerializerInterceptor,
+  ExecutionContext,
   INestApplication,
   NotFoundException,
   ValidationPipe,
@@ -9,11 +10,11 @@ import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { RolesGuard } from '../roles/roles.guard';
 import { ResolvePromisesInterceptor } from '../utils/serializer.interceptor';
 import validationOptions from '../utils/validation-options';
 import { MapPointsController } from './map-points.controller';
 import { MapPointsService } from './map-points.service';
+import { MapPointActivitySlotsService } from './map-point-activity-slots.service';
 
 const POINT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -32,13 +33,23 @@ describe('MapPointsController GET /map-points/:id/logo', () => {
     service = { getLogo: jest.fn() };
     const moduleRef = await Test.createTestingModule({
       controllers: [MapPointsController],
-      providers: [{ provide: MapPointsService, useValue: service }],
+      providers: [
+        { provide: MapPointsService, useValue: service },
+        { provide: MapPointActivitySlotsService, useValue: {} },
+      ],
     })
-      // Access control is covered by the guards themselves; here: the response.
+      // Access control is covered by the service; here: the response. The
+      // stub plays the JWT strategy: a signed-in viewer.
       .overrideGuard(AuthGuard('jwt'))
-      .useValue({ canActivate: () => true })
-      .overrideGuard(RolesGuard)
-      .useValue({ canActivate: () => true })
+      .useValue({
+        canActivate: (context: ExecutionContext) => {
+          context.switchToHttp().getRequest<{ user: unknown }>().user = {
+            id: 13,
+            role: { id: 2 },
+          };
+          return true;
+        },
+      })
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -76,7 +87,10 @@ describe('MapPointsController GET /map-points/:id/logo', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(service.getLogo).toHaveBeenCalledWith(POINT_ID);
+    expect(service.getLogo).toHaveBeenCalledWith(
+      { userId: 13, roleId: 2 },
+      POINT_ID,
+    );
     expect(res.headers['content-type']).toBe('image/webp');
     expect(res.headers['content-length']).toBe(String(webpBytes.length));
     expect(res.headers['x-content-type-options']).toBe('nosniff');

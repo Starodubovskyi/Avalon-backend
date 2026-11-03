@@ -1,5 +1,6 @@
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
 import { RoleEnum } from '../roles/roles.enum';
+import { UserCard } from './domain/user-card';
 
 /** The authenticated caller: id and role always come from the JWT. */
 export interface NetworkActor {
@@ -25,21 +26,60 @@ export function isAdmin(actor: NetworkActor): boolean {
 }
 
 /**
- * Roles of the people the actor may see (directory, people, chat partners,
- * follows). null = no role restriction (admin/staff see everyone).
+ * Who the actor may see in the directory, people, chat, follows, the feed
+ * and profiles. null = everyone (admin/staff). A viewer sees the team roles
+ * and "public profiles": owners and active members of public map points.
  */
-export function visibleRoleIds(actor: NetworkActor): number[] | null {
-  return isTeamRole(actor.roleId) ? null : [RoleEnum.admin, RoleEnum.staff];
+export interface VisibleUsers {
+  roleIds: number[];
+  publicProfiles: boolean;
+}
+
+export function visibleUsers(actor: NetworkActor): VisibleUsers | null {
+  return isTeamRole(actor.roleId)
+    ? null
+    : { roleIds: [RoleEnum.admin, RoleEnum.staff], publicProfiles: true };
+}
+
+/** What visibility depends on, for one target user. */
+export interface UserVisibilityFacts {
+  roleId: number | null;
+  /** Owns or actively works at a public map point. */
+  publicProfile: boolean;
 }
 
 export function canSeeUser(
   actor: NetworkActor,
-  targetRoleId: number | null,
+  target: UserVisibilityFacts,
 ): boolean {
-  const roles = visibleRoleIds(actor);
+  const scope = visibleUsers(actor);
+  if (scope === null) {
+    return true;
+  }
   return (
-    roles === null || (targetRoleId !== null && roles.includes(targetRoleId))
+    (target.roleId !== null && scope.roleIds.includes(target.roleId)) ||
+    (scope.publicProfiles && target.publicProfile)
   );
+}
+
+/** Viewers never see the email of another client (role user); the team does. */
+export function canSeeEmail(
+  actor: NetworkActor,
+  target: Pick<UserCard, 'id' | 'role'>,
+): boolean {
+  return (
+    isTeamRole(actor.roleId) ||
+    target.id === actor.userId ||
+    target.role !== 'viewer'
+  );
+}
+
+/** The card as the actor may see it (email hidden where canSeeEmail says no). */
+export function redactUserCard<T extends UserCard>(
+  card: T,
+  actor: NetworkActor,
+): T {
+  return canSeeEmail(actor, card) ? card : Object.assign(card, { email: null });
 }
 
 /** Posts and comments: the author, or any admin. */

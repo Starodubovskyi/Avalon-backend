@@ -1,10 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRef } from '../../users/domain/user-ref';
+import { MapPointCreator } from './map-point-creator';
 import {
   ACTIVITY_CODES,
   ActivityCode,
   MAP_POINT_KINDS,
+  MAP_POINT_VISIBILITIES,
   MapPointKind,
+  MapPointVisibility,
 } from '../map-point.constants';
 
 export class MapPoint {
@@ -22,6 +24,14 @@ export class MapPoint {
 
   @ApiProperty({ enum: MAP_POINT_KINDS, example: 'head_office' })
   kind: MapPointKind;
+
+  @ApiProperty({
+    enum: MAP_POINT_VISIBILITIES,
+    example: 'public',
+    description:
+      'public: everyone signed in; team: admin/staff and the owner only',
+  })
+  visibility: MapPointVisibility;
 
   @ApiProperty({
     type: Number,
@@ -65,6 +75,14 @@ export class MapPoint {
   })
   activities: ActivityCode[];
 
+  @ApiProperty({
+    type: Number,
+    example: 1,
+    description:
+      'Business Activity slots (1–14); more are bought with credits (POST /map-points/:id/activity-slots)',
+  })
+  activitySlots: number;
+
   /** The logo itself is served by GET /map-points/:id/logo, never inline. */
   @ApiProperty({
     type: Boolean,
@@ -84,11 +102,36 @@ export class MapPoint {
   })
   email: string | null;
 
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'The current email was confirmed by link (or marked verified by the team); changing the email resets it',
+  })
+  emailVerified: boolean;
+
   @ApiPropertyOptional({
     type: String,
     nullable: true,
   })
   address: string | null;
+
+  @ApiProperty({ type: String, nullable: true, maxLength: 2000 })
+  description: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: 'https://avalon.example',
+  })
+  website: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Parent company (head office) of a branch',
+  })
+  parentId: string | null;
 
   @ApiPropertyOptional({
     type: String,
@@ -106,11 +149,12 @@ export class MapPoint {
   photoId: string | null;
 
   @ApiProperty({
-    type: () => UserRef,
+    type: () => MapPointCreator,
     nullable: true,
-    description: 'Creator of the point (userId)',
+    description:
+      'Owner (creator) of the point. Viewers get email null for other clients',
   })
-  createdBy: UserRef | null;
+  createdBy: MapPointCreator | null;
 
   @ApiProperty()
   createdAt: Date;

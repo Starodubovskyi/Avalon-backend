@@ -31,6 +31,9 @@ import { UsersDirectoryModule } from './users-directory/users-directory.module';
 import { ChatModule } from './chat/chat.module';
 import { SocialModule } from './social/social.module';
 import { AgencyRequestsModule } from './agency-requests/agency-requests.module';
+import { WalletModule } from './wallet/wallet.module';
+import { CompaniesModule } from './companies/companies.module';
+import { ProfilesModule } from './profiles/profiles.module';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { AllConfigType } from './config/config.type';
 import { SessionModule } from './session/session.module';
@@ -112,6 +115,9 @@ const infrastructureDatabaseModule = (databaseConfig() as DatabaseConfig)
     ChatModule,
     SocialModule,
     AgencyRequestsModule,
+    WalletModule,
+    CompaniesModule,
+    ProfilesModule,
     AuthModule,
     AuthFacebookModule,
     AuthGoogleModule,

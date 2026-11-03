@@ -1,167 +1,213 @@
-import {
-  HttpStatus,
-  Injectable,
-  NotFoundException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateMapPointDto } from './dto/create-map-point.dto';
 import { UpdateMapPointDto } from './dto/update-map-point.dto';
 import { QueryMapPointDto } from './dto/query-map-point.dto';
-import { MapPointRepository } from './infrastructure/persistence/map-point.repository';
+import {
+  MapPointParentCycleError,
+  MapPointPatch,
+  MapPointRepository,
+} from './infrastructure/persistence/map-point.repository';
 import { MapPoint } from './domain/map-point';
 import {
   MapPointFavoriteState,
   MapPointLogo,
   MapPointView,
-  toMapPointView,
 } from './domain/map-point-view';
-import { User } from '../users/domain/user';
 import { FilesService } from '../files/files.service';
-import { UserRankService } from '../user-rank/user-rank.service';
 import { decodeImageDataUrl } from '../utils/validators/is-image-data-url';
+import { unprocessable } from '../utils/unprocessable';
+import { isTeamRole, NetworkActor } from '../users-directory/user-visibility';
 import {
   ActivityCode,
+  CLIENT_POINT_LIMIT,
+  DEFAULT_ACTIVITY_SLOTS,
   DEFAULT_MAP_POINT_KIND,
-  FREE_ACTIVITIES_LIMIT,
   MAP_POINT_LIST_LIMIT,
   MAP_POINT_LOGO_MIME_TYPES,
+  MapPointKind,
+  MapPointVisibility,
 } from './map-point.constants';
+import {
+  assertCanEditPoint,
+  assertCanSeePoint,
+  canEditPoint,
+  pointListScope,
+} from './map-point-access';
+import { MapPointPresenter } from './map-point.presenter';
 
 /**
- * Shared team map (admin/staff): any staff member can read, edit and delete
- * any point; userId always stays the creator. Favorites are per user; the
- * view carries the caller's `isFavorite` and the creator's `rank`. Logos are
- * never part of the view: `hasLogo`/`logoVersion` point to getLogo().
+ * Map points of the team and of clients. The team (admin/staff) reads and
+ * edits every point; a viewer reads public points and their own, creates up
+ * to CLIENT_POINT_LIMIT and edits only their own (403 otherwise; a point
+ * they cannot see is 404). userId always stays the creator (owner).
+ * Logos are never part of the view: `hasLogo`/`logoVersion` point to getLogo().
  */
 @Injectable()
 export class MapPointsService {
   constructor(
     private readonly mapPointRepository: MapPointRepository,
     private readonly filesService: FilesService,
-    private readonly userRankService: UserRankService,
+    private readonly presenter: MapPointPresenter,
   ) {}
 
   async create(
-    userId: User['id'],
+    actor: NetworkActor,
     createMapPointDto: CreateMapPointDto,
   ): Promise<MapPointView> {
-    const activities = this.assertActivitiesAllowed(
+    const activities = this.assertActivitiesFit(
       createMapPointDto.activities ?? [],
+      DEFAULT_ACTIVITY_SLOTS,
     );
     const photoId = await this.resolvePhotoId(createMapPointDto.photoId);
+    const parentId = createMapPointDto.parentId
+      ? await this.resolveParentId(actor, createMapPointDto.parentId, null)
+      : null;
+    const kind = createMapPointDto.kind ?? DEFAULT_MAP_POINT_KIND;
 
-    const point = await this.mapPointRepository.create({
-      userId,
-      kind: createMapPointDto.kind ?? DEFAULT_MAP_POINT_KIND,
-      lat: createMapPointDto.lat,
-      lng: createMapPointDto.lng,
-      firstName: createMapPointDto.firstName,
-      lastName: createMapPointDto.lastName ?? '',
-      activity: createMapPointDto.activity ?? '',
-      activities,
-      logo: createMapPointDto.logo ?? null,
-      phone: createMapPointDto.phone ?? null,
-      email: createMapPointDto.email ?? null,
-      address: createMapPointDto.address ?? null,
-      notes: createMapPointDto.notes ?? null,
-      photoId,
-    });
-    return this.presentOne(userId, point);
+    const point = await this.mapPointRepository.create(
+      {
+        userId: actor.userId,
+        kind,
+        visibility: createMapPointDto.visibility ?? defaultVisibility(kind),
+        lat: createMapPointDto.lat,
+        lng: createMapPointDto.lng,
+        firstName: createMapPointDto.firstName,
+        lastName: createMapPointDto.lastName ?? '',
+        activity: createMapPointDto.activity ?? '',
+        activities,
+        logo: createMapPointDto.logo ?? null,
+        phone: createMapPointDto.phone ?? null,
+        email: createMapPointDto.email ?? null,
+        address: createMapPointDto.address ?? null,
+        notes: createMapPointDto.notes ?? null,
+        photoId,
+        description: createMapPointDto.description ?? null,
+        website: createMapPointDto.website ?? null,
+        parentId,
+      },
+      isTeamRole(actor.roleId) ? null : { max: CLIENT_POINT_LIMIT },
+    );
+    if (!point) {
+      throw unprocessable('points', 'limitReached');
+    }
+    return this.presenter.presentOne(actor, point);
   }
 
   async findAll(
-    viewerId: User['id'],
+    actor: NetworkActor,
     query: QueryMapPointDto,
   ): Promise<MapPointView[]> {
+    const scope = pointListScope(actor);
     const points = await this.mapPointRepository.findAll({
       kind: query.kind,
+      visibleTo: scope,
       limit: MAP_POINT_LIST_LIMIT,
     });
-    return this.present(viewerId, points);
+    if (points.length < MAP_POINT_LIST_LIMIT) {
+      return this.presenter.present(actor, points);
+    }
+    // The newest-first cap was hit: the caller's own points are always listed.
+    const own = await this.mapPointRepository.findAll({
+      kind: query.kind,
+      visibleTo: scope,
+      ownerId: actor.userId,
+      limit: MAP_POINT_LIST_LIMIT,
+    });
+    return this.presenter.present(actor, mergeNewestFirst(points, own));
   }
 
   async findById(
-    viewerId: User['id'],
+    actor: NetworkActor,
     id: MapPoint['id'],
   ): Promise<MapPointView> {
-    const point = await this.mapPointRepository.findById(id);
-    if (!point) {
-      throw this.notFound();
-    }
-    return this.presentOne(viewerId, point);
+    return this.presenter.presentOne(
+      actor,
+      await this.getVisiblePoint(actor, id),
+    );
+  }
+
+  /** 404 when the point is missing, deleted or hidden from the actor. */
+  async getVisiblePoint(
+    actor: NetworkActor,
+    id: MapPoint['id'],
+  ): Promise<MapPoint> {
+    return assertCanSeePoint(actor, await this.mapPointRepository.findById(id));
+  }
+
+  /** getVisiblePoint() + 403 unless the actor is the owner or the team. */
+  async getEditablePoint(
+    actor: NetworkActor,
+    id: MapPoint['id'],
+  ): Promise<MapPoint> {
+    return assertCanEditPoint(
+      actor,
+      await this.mapPointRepository.findById(id),
+    );
   }
 
   async update(
-    viewerId: User['id'],
+    actor: NetworkActor,
     id: MapPoint['id'],
     updateMapPointDto: UpdateMapPointDto,
   ): Promise<MapPointView> {
+    const point = await this.getEditablePoint(actor, id);
     if (updateMapPointDto.activities !== undefined) {
-      this.assertActivitiesAllowed(updateMapPointDto.activities);
+      this.assertActivitiesFit(
+        updateMapPointDto.activities,
+        point.activitySlots,
+      );
     }
     const photoId =
       updateMapPointDto.photoId === undefined
         ? undefined
         : await this.resolvePhotoId(updateMapPointDto.photoId);
+    const parentId =
+      updateMapPointDto.parentId === undefined ||
+      updateMapPointDto.parentId === null
+        ? updateMapPointDto.parentId
+        : await this.resolveParentId(actor, updateMapPointDto.parentId, id);
 
-    const updated = await this.mapPointRepository.update(id, {
-      ...(updateMapPointDto.kind !== undefined
-        ? { kind: updateMapPointDto.kind }
-        : {}),
-      ...(updateMapPointDto.lat !== undefined
-        ? { lat: updateMapPointDto.lat }
-        : {}),
-      ...(updateMapPointDto.lng !== undefined
-        ? { lng: updateMapPointDto.lng }
-        : {}),
-      ...(updateMapPointDto.firstName !== undefined
-        ? { firstName: updateMapPointDto.firstName }
-        : {}),
-      ...(updateMapPointDto.lastName !== undefined
-        ? { lastName: updateMapPointDto.lastName }
-        : {}),
-      ...(updateMapPointDto.activity !== undefined
-        ? { activity: updateMapPointDto.activity }
-        : {}),
-      ...(updateMapPointDto.activities !== undefined
-        ? { activities: updateMapPointDto.activities }
-        : {}),
-      ...(updateMapPointDto.logo !== undefined
-        ? { logo: updateMapPointDto.logo }
-        : {}),
-      ...(updateMapPointDto.phone !== undefined
-        ? { phone: updateMapPointDto.phone }
-        : {}),
-      ...(updateMapPointDto.email !== undefined
-        ? { email: updateMapPointDto.email }
-        : {}),
-      ...(updateMapPointDto.address !== undefined
-        ? { address: updateMapPointDto.address }
-        : {}),
-      ...(updateMapPointDto.notes !== undefined
-        ? { notes: updateMapPointDto.notes }
-        : {}),
-      ...(photoId !== undefined ? { photoId } : {}),
-    });
+    const patch = toMapPointPatch(updateMapPointDto, photoId, parentId);
+    // A private person is team-only unless the request says otherwise.
+    if (
+      updateMapPointDto.kind === 'private_person' &&
+      updateMapPointDto.visibility === undefined
+    ) {
+      patch.visibility = 'team';
+    }
 
+    let updated: MapPoint | null;
+    try {
+      updated = await this.mapPointRepository.update(id, patch);
+    } catch (error) {
+      if (error instanceof MapPointParentCycleError) {
+        throw unprocessable('parentId', 'invalid');
+      }
+      throw error;
+    }
     if (!updated) {
       throw this.notFound();
     }
-    return this.presentOne(viewerId, updated);
+    return this.presenter.presentOne(actor, updated);
   }
 
-  async remove(id: MapPoint['id']): Promise<void> {
-    const removed = await this.mapPointRepository.remove(id);
-    if (!removed) {
+  async remove(actor: NetworkActor, id: MapPoint['id']): Promise<void> {
+    await this.getEditablePoint(actor, id);
+    if (!(await this.mapPointRepository.remove(id))) {
       throw this.notFound();
     }
   }
 
   /**
    * Logo bytes with the stored MIME type (re-checked against the allowlist
-   * and the file signature). 404 when the point or its logo does not exist.
+   * and the file signature). 404 when the point (as seen by the actor) or
+   * its logo does not exist.
    */
-  async getLogo(id: MapPoint['id']): Promise<MapPointLogo> {
+  async getLogo(
+    actor: NetworkActor,
+    id: MapPoint['id'],
+  ): Promise<MapPointLogo> {
+    await this.getVisiblePoint(actor, id);
     const dataUrl = await this.mapPointRepository.findLogo(id);
     const logo = dataUrl
       ? decodeImageDataUrl(dataUrl, MAP_POINT_LOGO_MIME_TYPES)
@@ -172,72 +218,52 @@ export class MapPointsService {
     return logo;
   }
 
-  /** Idempotent; 404 when the point does not exist or was deleted. */
+  /** Idempotent; 404 when the point does not exist, was deleted or is hidden. */
   async setFavorite(
-    userId: User['id'],
+    actor: NetworkActor,
     id: MapPoint['id'],
     isFavorite: boolean,
   ): Promise<MapPointFavoriteState> {
-    if (!(await this.mapPointRepository.exists(id))) {
-      throw this.notFound();
-    }
+    await this.getVisiblePoint(actor, id);
     if (isFavorite) {
-      await this.mapPointRepository.addFavorite(Number(userId), id);
+      await this.mapPointRepository.addFavorite(actor.userId, id);
     } else {
-      await this.mapPointRepository.removeFavorite(Number(userId), id);
+      await this.mapPointRepository.removeFavorite(actor.userId, id);
     }
     const state = new MapPointFavoriteState();
     state.isFavorite = isFavorite;
     return state;
   }
 
-  /**
-   * Free plan: at most FREE_ACTIVITIES_LIMIT activities. The balance (stage 2)
-   * will unlock more here.
-   */
-  private assertActivitiesAllowed(activities: ActivityCode[]): ActivityCode[] {
-    if (activities.length > FREE_ACTIVITIES_LIMIT) {
-      throw new UnprocessableEntityException({
-        status: HttpStatus.UNPROCESSABLE_ENTITY,
-        errors: {
-          activities: 'premiumRequired',
-        },
-      });
+  /** More activities than the point's slots → 422 premiumRequired. */
+  private assertActivitiesFit(
+    activities: ActivityCode[],
+    slots: number,
+  ): ActivityCode[] {
+    if (activities.length > slots) {
+      throw unprocessable('activities', 'premiumRequired');
     }
     return activities;
   }
 
-  private async presentOne(
-    viewerId: User['id'],
-    point: MapPoint,
-  ): Promise<MapPointView> {
-    const [view] = await this.present(viewerId, [point]);
-    return view;
-  }
-
-  private async present(
-    viewerId: User['id'],
-    points: MapPoint[],
-  ): Promise<MapPointView[]> {
-    if (points.length === 0) {
-      return [];
+  /**
+   * The parent must be a point the actor may edit (owner or team): nobody
+   * attaches branches to someone else's company. It may not be the point
+   * itself; deeper cycles are checked by the repository under a lock.
+   */
+  private async resolveParentId(
+    actor: NetworkActor,
+    parentId: string,
+    pointId: string | null,
+  ): Promise<string> {
+    if (parentId === pointId) {
+      throw unprocessable('parentId', 'invalid');
     }
-    const [favoriteIds, ranks] = await Promise.all([
-      this.mapPointRepository.findFavoriteIds(
-        Number(viewerId),
-        points.map((point) => point.id),
-      ),
-      this.userRankService.getRanks(
-        points.map((point) => Number(point.userId)),
-      ),
-    ]);
-    return points.map((point) =>
-      toMapPointView(
-        point,
-        favoriteIds.has(point.id),
-        ranks.get(Number(point.userId)) ?? 0,
-      ),
-    );
+    const parent = await this.mapPointRepository.findById(parentId);
+    if (!parent || !canEditPoint(actor, parent)) {
+      throw unprocessable('parentId', 'notFound');
+    }
+    return parent.id;
   }
 
   private notFound(): NotFoundException {
@@ -252,13 +278,64 @@ export class MapPointsService {
     }
     const file = await this.filesService.findById(photoId);
     if (!file) {
-      throw new UnprocessableEntityException({
-        status: HttpStatus.UNPROCESSABLE_ENTITY,
-        errors: {
-          photoId: 'fileNotExists',
-        },
-      });
+      throw unprocessable('photoId', 'fileNotExists');
     }
     return file.id;
   }
+}
+
+/** Both lists newest first; duplicates (by id) are dropped. */
+function mergeNewestFirst(a: MapPoint[], b: MapPoint[]): MapPoint[] {
+  const byId = new Map<string, MapPoint>();
+  for (const point of [...a, ...b]) {
+    byId.set(point.id, point);
+  }
+  return [...byId.values()].sort(
+    (x, y) =>
+      y.createdAt.getTime() - x.createdAt.getTime() || y.id.localeCompare(x.id),
+  );
+}
+
+/** Private persons start team-only; every other kind starts public. */
+function defaultVisibility(kind: MapPointKind): MapPointVisibility {
+  return kind === 'private_person' ? 'team' : 'public';
+}
+
+const PATCH_FIELDS = [
+  'kind',
+  'visibility',
+  'lat',
+  'lng',
+  'firstName',
+  'lastName',
+  'activity',
+  'activities',
+  'logo',
+  'phone',
+  'email',
+  'address',
+  'notes',
+  'description',
+  'website',
+] as const;
+
+/** Only the fields present in the request (undefined = keep). */
+function toMapPointPatch(
+  dto: UpdateMapPointDto,
+  photoId: string | null | undefined,
+  parentId: string | null | undefined,
+): MapPointPatch {
+  const patch: MapPointPatch = {};
+  for (const field of PATCH_FIELDS) {
+    if (dto[field] !== undefined) {
+      Object.assign(patch, { [field]: dto[field] });
+    }
+  }
+  if (photoId !== undefined) {
+    patch.photoId = photoId;
+  }
+  if (parentId !== undefined) {
+    patch.parentId = parentId;
+  }
+  return patch;
 }

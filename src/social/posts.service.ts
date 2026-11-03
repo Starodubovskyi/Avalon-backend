@@ -6,7 +6,8 @@ import {
 import {
   canDeleteContent,
   NetworkActor,
-  visibleRoleIds,
+  redactUserCard,
+  visibleUsers,
 } from '../users-directory/user-visibility';
 import { Post, PostData, PostLikeState, PostRef } from './domain/post';
 import { PostComment, PostCommentData } from './domain/post-comment';
@@ -28,7 +29,7 @@ export class PostsService {
     const posts = await this.postRepository.findFeed({
       viewerId: actor.userId,
       scope: query.scope ?? 'all',
-      authorRoleIds: visibleRoleIds(actor),
+      authors: visibleUsers(actor),
       before: query.before,
       limit: query.limit ?? FEED_DEFAULT_LIMIT,
     });
@@ -73,7 +74,7 @@ export class PostsService {
     const comments = await this.commentRepository.findByPost(
       postId,
       COMMENTS_LIMIT,
-      { viewerId: actor.userId, authorRoleIds: visibleRoleIds(actor) },
+      { viewerId: actor.userId, authors: visibleUsers(actor) },
     );
     return comments.map((comment) => this.toComment(comment, actor));
   }
@@ -129,12 +130,14 @@ export class PostsService {
 
   private toPost(data: PostData, actor: NetworkActor): Post {
     return Object.assign(new Post(), data, {
+      author: redactUserCard(data.author, actor),
       canDelete: canDeleteContent(actor, data.author.id),
     });
   }
 
   private toComment(data: PostCommentData, actor: NetworkActor): PostComment {
     return Object.assign(new PostComment(), data, {
+      author: redactUserCard(data.author, actor),
       canDelete: canDeleteContent(actor, data.author.id),
     });
   }

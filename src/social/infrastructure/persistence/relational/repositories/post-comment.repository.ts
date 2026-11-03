@@ -13,6 +13,8 @@ import {
 import { PostCommentEntity } from '../entities/post-comment.entity';
 import { CommentRow, SocialMapper } from '../mappers/social.mapper';
 import { SqlParams } from '../../../../../utils/sql-params';
+import { visibleUserSql } from '../../../../../users-directory/infrastructure/persistence/relational/user-visibility-sql';
+import { VisibleUsers } from '../../../../../users-directory/user-visibility';
 
 const AUTHOR_COLUMNS = `u."id" AS "authorId", u."firstName", u."lastName", u."email", u."roleId"`;
 
@@ -26,16 +28,19 @@ export class PostCommentRelationalRepository implements PostCommentRepository {
   async findByPost(
     postId: string,
     limit: number,
-    visibility?: { viewerId: number; authorRoleIds: number[] | null },
+    visibility?: { viewerId: number; authors: VisibleUsers | null },
   ): Promise<PostCommentData[]> {
     const params = new SqlParams();
     const where = [
       `c."postId" = ${params.add(postId)}`,
       'c."deletedAt" IS NULL',
     ];
-    if (visibility?.authorRoleIds) {
+    const visibleAuthor = visibility
+      ? visibleUserSql('u', visibility.authors, params)
+      : null;
+    if (visibility && visibleAuthor) {
       where.push(
-        `(c."authorId" = ${params.add(visibility.viewerId)} OR u."roleId" = ANY(${params.add(visibility.authorRoleIds)}))`,
+        `(c."authorId" = ${params.add(visibility.viewerId)} OR ${visibleAuthor})`,
       );
     }
     const rows: CommentRow[] = await this.commentRepository.query(

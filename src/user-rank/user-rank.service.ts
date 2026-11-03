@@ -4,8 +4,8 @@ import { UserRankRepository } from './infrastructure/persistence/user-rank.repos
 
 /**
  * User Rank, calculated on read from the user's active content
- * (see RANK_WEIGHTS). Single entry point, so future contributions
- * (e.g. balance) are added in one place.
+ * (see RANK_WEIGHTS) plus active RANK boosts bought with credits.
+ * Single entry point, so future contributions are added in one place.
  */
 @Injectable()
 export class UserRankService {

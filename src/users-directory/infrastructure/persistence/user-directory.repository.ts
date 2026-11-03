@@ -1,18 +1,21 @@
 import { UserCard } from '../../domain/user-card';
+import { VisibleUsers } from '../../user-visibility';
 
 export interface UserDirectoryFilter {
   /** The caller: never part of the result. */
   excludeUserId: number;
-  /** null = any role. */
-  roleIds: number[] | null;
+  /** null = everyone. */
+  visibleUsers: VisibleUsers | null;
   search?: string;
   limit: number;
 }
 
-/** Minimal projection used for access checks (chat partners, follows). */
+/** Minimal projection used for access checks (chat partners, follows, profiles). */
 export interface DirectoryUserRole {
   id: number;
   roleId: number | null;
+  /** Owns or actively works at a public map point. */
+  publicProfile: boolean;
 }
 
 /** Read-only view of the user table; soft-deleted users are never returned. */

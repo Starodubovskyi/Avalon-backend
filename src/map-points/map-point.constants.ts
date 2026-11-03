@@ -49,8 +49,31 @@ export const ACTIVITY_LABELS: Readonly<Record<ActivityCode, string>> = {
   commodity_trading: 'Commodity trading',
 };
 
-/** Activities a point may have without a paid plan (more → premiumRequired). */
-export const FREE_ACTIVITIES_LIMIT = 1;
+/**
+ * Business Activity slots of a point: a new point has one; more are bought
+ * with credits (POST /map-points/:id/activity-slots). More activities than
+ * slots → 422 { activities: "premiumRequired" }. The maximum is a literal:
+ * the DB CHECK (migration 1794100000000) is frozen at 14.
+ */
+export const DEFAULT_ACTIVITY_SLOTS = 1;
+export const MAX_ACTIVITY_SLOTS = 14;
+
+/** public: everyone signed in; team: admin/staff and the owner only. */
+export const MAP_POINT_VISIBILITIES = ['public', 'team'] as const;
+export type MapPointVisibility = (typeof MAP_POINT_VISIBILITIES)[number];
+
+/** Points a viewer (role user) may own; admin/staff have no limit. */
+export const CLIENT_POINT_LIMIT = 5;
+
+export const MAP_POINT_DESCRIPTION_MAX_LENGTH = 2000;
+export const MAP_POINT_WEBSITE_MAX_LENGTH = 255;
+
+/** One verification email per point per minute. */
+export const POINT_EMAIL_RESEND_SECONDS = 60;
+/** `purpose` claim of point email tokens (other confirm-email tokens are rejected). */
+export const POINT_EMAIL_TOKEN_PURPOSE = 'map-point-email';
+/** Lifetime of the confirmation link (own constant, not the account-email setting). */
+export const POINT_EMAIL_TOKEN_EXPIRES = '1d';
 
 export const MAP_POINT_LOGO_MAX_LENGTH = 150_000;
 export const MAP_POINT_LOGO_MIME_TYPES = [

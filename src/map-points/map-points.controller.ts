@@ -35,9 +35,8 @@ import { UpdateMapPointDto } from './dto/update-map-point.dto';
 import { QueryMapPointDto } from './dto/query-map-point.dto';
 import { MapPointFavoriteState, MapPointView } from './domain/map-point-view';
 import { JwtPayloadType } from '../auth/strategies/types/jwt-payload.type';
-import { Roles } from '../roles/roles.decorator';
-import { RoleEnum } from '../roles/roles.enum';
-import { RolesGuard } from '../roles/roles.guard';
+import { toNetworkActor } from '../users-directory/user-visibility';
+import { MapPointActivitySlotsService } from './map-point-activity-slots.service';
 import {
   MAP_POINT_LOGO_CACHE_CONTROL,
   MAP_POINT_LOGO_MIME_TYPES,
@@ -46,45 +45,56 @@ import {
 type AuthRequest = { user: JwtPayloadType };
 
 const WRITE_ERRORS_DESCRIPTION =
-  '{ errors: { activities: "premiumRequired" | "invalid", logo: "invalid" | "tooLong", ... } }';
+  '{ errors: { activities: "premiumRequired" | "invalid", logo: "invalid" | "tooLong", visibility: "invalid", description: "tooLong", website: "invalid" | "tooLong", parentId: "invalid" | "notFound", ... } }';
 
-/** Shared contacts map of the Avalon team: admin and staff only. */
+/**
+ * Shared map of the team and the clients. admin/staff: every point, edit
+ * any. Viewers (role user): public points and their own, at most 5 own
+ * points, edit only their own. A point the caller cannot see is 404.
+ */
 @ApiTags('Map points')
 @ApiBearerAuth()
-@ApiForbiddenResponse({ description: 'Viewers (role user) have no access' })
-@Roles(RoleEnum.admin, RoleEnum.staff)
-@UseGuards(AuthGuard('jwt'), RolesGuard)
+@UseGuards(AuthGuard('jwt'))
 @Controller({
   path: 'map-points',
   version: '1',
 })
 export class MapPointsController {
-  constructor(private readonly mapPointsService: MapPointsService) {}
+  constructor(
+    private readonly mapPointsService: MapPointsService,
+    private readonly activitySlotsService: MapPointActivitySlotsService,
+  ) {}
 
   @Post()
   @ApiCreatedResponse({
     type: MapPointView,
   })
-  @ApiUnprocessableEntityResponse({ description: WRITE_ERRORS_DESCRIPTION })
+  @ApiUnprocessableEntityResponse({
+    description: `${WRITE_ERRORS_DESCRIPTION}; a viewer with 5 points: { errors: { points: "limitReached" } }`,
+  })
   @HttpCode(HttpStatus.CREATED)
   create(
     @Request() request: AuthRequest,
     @Body() createMapPointDto: CreateMapPointDto,
   ): Promise<MapPointView> {
-    return this.mapPointsService.create(request.user.id, createMapPointDto);
+    return this.mapPointsService.create(
+      toNetworkActor(request.user),
+      createMapPointDto,
+    );
   }
 
   @Get()
   @ApiOkResponse({
     type: [MapPointView],
-    description: 'All team points, newest first (max 1000)',
+    description:
+      'Newest first (max 1000). admin/staff: all points; viewers: public points and their own',
   })
   @HttpCode(HttpStatus.OK)
   findAll(
     @Request() request: AuthRequest,
     @Query() query: QueryMapPointDto,
   ): Promise<MapPointView[]> {
-    return this.mapPointsService.findAll(request.user.id, query);
+    return this.mapPointsService.findAll(toNetworkActor(request.user), query);
   }
 
   @Get(':id')
@@ -96,13 +106,13 @@ export class MapPointsController {
   @ApiOkResponse({
     type: MapPointView,
   })
-  @ApiNotFoundResponse()
+  @ApiNotFoundResponse({ description: 'Missing, deleted or not visible' })
   @HttpCode(HttpStatus.OK)
   findById(
     @Request() request: AuthRequest,
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<MapPointView> {
-    return this.mapPointsService.findById(request.user.id, id);
+    return this.mapPointsService.findById(toNetworkActor(request.user), id);
   }
 
   /**
@@ -122,12 +132,18 @@ export class MapPointsController {
   @ApiOkResponse({
     description: `Logo bytes (webp, png or jpeg). Cache-Control: ${MAP_POINT_LOGO_CACHE_CONTROL}`,
   })
-  @ApiNotFoundResponse({ description: 'No such point, or it has no logo' })
+  @ApiNotFoundResponse({
+    description: 'No such point (or not visible), or it has no logo',
+  })
   async getLogo(
+    @Request() request: AuthRequest,
     @Param('id', new ParseUUIDPipe()) id: string,
     @Res() response: Response,
   ): Promise<void> {
-    const logo = await this.mapPointsService.getLogo(id);
+    const logo = await this.mapPointsService.getLogo(
+      toNetworkActor(request.user),
+      id,
+    );
     response.status(HttpStatus.OK);
     response.setHeader('Content-Type', logo.mimeType);
     response.setHeader('Content-Length', String(logo.bytes.length));
@@ -145,6 +161,7 @@ export class MapPointsController {
   @ApiOkResponse({
     type: MapPointView,
   })
+  @ApiForbiddenResponse({ description: 'Not the owner (viewers)' })
   @ApiNotFoundResponse()
   @ApiUnprocessableEntityResponse({ description: WRITE_ERRORS_DESCRIPTION })
   @HttpCode(HttpStatus.OK)
@@ -153,7 +170,11 @@ export class MapPointsController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() updateMapPointDto: UpdateMapPointDto,
   ): Promise<MapPointView> {
-    return this.mapPointsService.update(request.user.id, id, updateMapPointDto);
+    return this.mapPointsService.update(
+      toNetworkActor(request.user),
+      id,
+      updateMapPointDto,
+    );
   }
 
   @Delete(':id')
@@ -163,9 +184,35 @@ export class MapPointsController {
     required: true,
   })
   @ApiNoContentResponse()
+  @ApiForbiddenResponse({ description: 'Not the owner (viewers)' })
+  @ApiNotFoundResponse()
   @HttpCode(HttpStatus.NO_CONTENT)
-  remove(@Param('id', new ParseUUIDPipe()) id: string): Promise<void> {
-    return this.mapPointsService.remove(id);
+  remove(
+    @Request() request: AuthRequest,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    return this.mapPointsService.remove(toNetworkActor(request.user), id);
+  }
+
+  @Post(':id/activity-slots')
+  @ApiParam({ name: 'id', type: String, required: true })
+  @ApiOkResponse({
+    type: MapPointView,
+    description:
+      'Buys one more Business Activity slot (50 credits from the caller). Owner or admin/staff',
+  })
+  @ApiForbiddenResponse({ description: 'Not the owner (viewers)' })
+  @ApiNotFoundResponse()
+  @ApiUnprocessableEntityResponse({
+    description:
+      '{ errors: { balance: "insufficient" } } | { errors: { activitySlots: "max" } }',
+  })
+  @HttpCode(HttpStatus.OK)
+  buyActivitySlot(
+    @Request() request: AuthRequest,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<MapPointView> {
+    return this.activitySlotsService.purchase(toNetworkActor(request.user), id);
   }
 
   @Post(':id/favorite')
@@ -180,7 +227,11 @@ export class MapPointsController {
     @Request() request: AuthRequest,
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<MapPointFavoriteState> {
-    return this.mapPointsService.setFavorite(request.user.id, id, true);
+    return this.mapPointsService.setFavorite(
+      toNetworkActor(request.user),
+      id,
+      true,
+    );
   }
 
   @Delete(':id/favorite')
@@ -195,6 +246,10 @@ export class MapPointsController {
     @Request() request: AuthRequest,
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<MapPointFavoriteState> {
-    return this.mapPointsService.setFavorite(request.user.id, id, false);
+    return this.mapPointsService.setFavorite(
+      toNetworkActor(request.user),
+      id,
+      false,
+    );
   }
 }
