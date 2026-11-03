@@ -628,7 +628,10 @@ describe('MapPointsService', () => {
     });
 
     it('should set and clear a parent', async () => {
-      repo.findById.mockResolvedValueOnce(point).mockResolvedValueOnce(other);
+      repo.findById
+        .mockResolvedValueOnce(point)
+        .mockResolvedValueOnce(other)
+        .mockResolvedValueOnce({ ...point, parentId: other.id });
 
       await service.update(STAFF, point.id, { parentId: other.id });
       await service.update(STAFF, point.id, { parentId: null });
@@ -639,6 +642,50 @@ describe('MapPointsService', () => {
       expect(repo.update).toHaveBeenNthCalledWith(2, point.id, {
         parentId: null,
       });
+    });
+
+    it('should keep a resent current parent without re-checking it', async () => {
+      // the owner may edit the branch, not the parent company (user 8)
+      repo.findById.mockResolvedValue({ ...point, parentId: other.id });
+
+      await expect(
+        service.update(OWNER, point.id, {
+          parentId: other.id,
+          firstName: 'Renamed branch',
+        }),
+      ).resolves.toMatchObject({ id: point.id });
+
+      expect(repo.findById).toHaveBeenCalledTimes(1);
+      expect(repo.update).toHaveBeenCalledWith(point.id, {
+        firstName: 'Renamed branch',
+      });
+    });
+
+    it('should accept only a head office as parent', async () => {
+      for (const kind of ['branch', 'self_employed', 'authority'] as const) {
+        repo.findById
+          .mockResolvedValueOnce(point)
+          .mockResolvedValueOnce({ ...other, kind });
+        await expect(
+          service.update(STAFF, point.id, { parentId: other.id }),
+        ).rejects.toMatchObject({
+          response: { status: 422, errors: { parentId: 'invalid' } },
+        });
+      }
+      expect(repo.update).not.toHaveBeenCalled();
+
+      repo.findById.mockResolvedValueOnce({ ...other, kind: 'for_sale' });
+      await expect(
+        service.create(STAFF, {
+          lat: 1,
+          lng: 2,
+          firstName: 'Branch',
+          parentId: other.id,
+        }),
+      ).rejects.toMatchObject({
+        response: { errors: { parentId: 'invalid' } },
+      });
+      expect(repo.create).not.toHaveBeenCalled();
     });
 
     it('should return 404 on update when the point does not exist', async () => {
